@@ -273,3 +273,152 @@ public class UserServiceImpl implements IUserService {
     }
 }
 ````
+
+## User Resource
+
+Antes de implementar el recurso de usuario, vamos a crear una clase que sea común a todas las respuestas que se manden
+desde el backend:
+
+````java
+
+@JsonInclude(JsonInclude.Include.NON_DEFAULT)   // (1)
+@SuperBuilder                                   // (2)
+@Data
+public class HttpResponse {
+    protected String timeStamp;
+    protected int statusCode;
+    protected HttpStatus status;
+    protected String message;
+    protected String developerMessage;
+    protected String path;
+    protected String requestMethod;
+    protected Map<?, ?> data;
+}
+````
+
+De esta clase es importante aclarar algunas anotaciones:
+
+### (1) @JsonInclude(JsonInclude.Include.NON_DEFAULT)
+
+Se puede usar para excluir las propiedades con valores predeterminados de POJO.
+
+**Si se usa @JsonInclude(JsonInclude.Include.NON_DEFAULT) en el nivel de clase, se excluyen los valores predeterminados
+de los campos.** Esto se hace creando una instancia de POJO utilizando un constructor de cero argumentos y comparando
+los valores de propiedad, excluyendo los que tienen valores predeterminados, **por ejemplo, el valor int predeterminado
+es 0, el valor de String predeterminado es nulo y así sucesivamente.**
+
+Por ejemplo:
+
+````java
+
+@JsonInclude(JsonInclude.Include.NON_DEFAULT)
+public class Employee {
+    private String name;
+    private String dept;
+    private Integer salary;
+    private boolean fullTime;
+    private List<String> phones;
+    private Date dateOfBirth;
+    /* other code */
+}
+````
+
+````java
+public class ExampleMain {
+    public static void main(String[] args) throws IOException {
+        Employee employee = new Employee();
+        employee.setName("Trish");
+        employee.setFullTime(false);
+        employee.setPhones(new ArrayList<>());
+        employee.setSalary(Integer.valueOf(0));
+        employee.setDateOfBirth(new Date(0));
+
+        ObjectMapper om = new ObjectMapper();
+        String jsonString = om.writeValueAsString(employee);
+        System.out.println(jsonString);
+    }
+}
+````
+
+El resultado sería:
+
+````json
+{
+  "name": "Trish",
+  "salary": 0,
+  "phones": [],
+  "dateOfBirth": 0
+}
+````
+
+Como se ha visto en la salida anterior, **solo se excluyeron las propiedades con valores de miembro predeterminados.**
+No se excluye el Integer con 0 (primitive wrapper - salary), ya que su valor predeterminado sería null y no 0, no se
+excluye la fecha con 0 milisegundos y tampoco se excluye la colección "vacía" (teléfonos). Pero sí se excluye el
+departamento, porque al no ser definido su valor, por defecto es nulo, también se excluye la propiedad
+fullTime, porque al ser un primitivo booleano, su valor predeterminado es **false** y cuando creamos el objeto le
+estamos asignando **false**, su valor predeterminado.
+
+### (2) @SuperBuilder
+
+Nos permite la creación de objetos mediante el patrón de diseño **Builder**. Esta anotación es similar a la anotación
+**@Builder**, también de Lombok, pero con una diferencia.
+
+Cuando se coloca la anotación **@Builder** en una clase, Lombok genera un constructor privado con todos los campos de la
+clase y un método estático público llamado builder() que devuelve una instancia del Builder. Este Builder se utiliza
+para configurar selectivamente los campos de la clase y, finalmente, crear una instancia de la clase llamando al método
+build(). **Es útil cuando solo necesitas crear una clase con el patrón de diseño Builder, sin la necesidad de heredar de
+una clase base con sus propios campos.**
+
+Ahora, **@SuperBuilder es una extensión de @Builder.** Además de generar el Builder para la clase anotada, también
+**tiene en cuenta la herencia.** Cuando una clase utiliza @SuperBuilder, el Builder generado tiene métodos para
+configurar tanto los campos de la clase actual como los campos heredados de la clase base. Esto **permite construir
+objetos de la clase derivada junto con sus campos heredados.**
+
+Es útil cuando tienes una jerarquía de clases y deseas construir objetos de clases derivadas utilizando el patrón de
+diseño Builder.
+
+Cuando todas las clases están anotadas con **@SuperBuilder**, obtenemos un constructor para la clase secundaria que
+también expone las propiedades de los padres.
+
+**Tenga en cuenta que tenemos que anotar todas las clases.** @SuperBuilder no se pueden mezclar con @Builder dentro de
+la misma jerarquía de clases. Si lo hace, se producirá un error de compilación.
+
+Ahora sí, creamos nuestro recurso de usuario donde implementamos dos end points:
+
+````java
+
+@RequiredArgsConstructor
+@RestController
+@RequestMapping(path = "/api/v1/users")
+public class UserResource {
+
+    private final IUserService userService;
+
+    @PostMapping
+    public ResponseEntity<HttpResponse> createUser(@RequestBody User user) {
+        User userDB = this.userService.saveUser(user);
+        URI uriUser = URI.create("");
+        HttpResponse httpResponse = HttpResponse.builder()
+                .timeStamp(LocalDateTime.now().toString())
+                .data(Map.of("user", userDB))
+                .message("Usuario creado")
+                .statusCode(HttpStatus.CREATED.value())
+                .status(HttpStatus.CREATED)
+                .build();
+        return ResponseEntity.created(uriUser).body(httpResponse);
+    }
+
+    @GetMapping
+    public ResponseEntity<HttpResponse> confirmUserAccount(@RequestParam String token) {
+        Boolean isSuccess = this.userService.verifyToken(token);
+        HttpResponse httpResponse = HttpResponse.builder()
+                .timeStamp(LocalDateTime.now().toString())
+                .data(Map.of("success", isSuccess))
+                .message("Cuenta verificada")
+                .statusCode(HttpStatus.OK.value())
+                .status(HttpStatus.OK)
+                .build();
+        return ResponseEntity.ok(httpResponse);
+    }
+}
+````
