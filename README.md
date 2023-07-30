@@ -48,3 +48,29 @@ Las dependencias agregadas al proyecto desde su creación en Spring Initializr s
 
 El nombre de la clase principal creada por defecto es ``SpringBootEmailApplication``, lo renombramos a un nombre más
 corto ``Main``, lo mismo haremos con la clase principal de Test ``MainTests``.
+
+## User Domain Model
+
+Para el propósito de esta aplicación necesitamos registrar usuarios en la base de datos a quienes luego de registrarse
+en nuestra aplicación le tenemos que enviar un email para que confirme su registro. Por lo tanto, necesitamos crear la
+clase **User** que será nuestro **Entity** que estará mapeado a una tabla de la base de datos.
+
+````java
+
+@AllArgsConstructor
+@NoArgsConstructor
+@SuperBuilder
+@Setter
+@Getter
+@Entity
+@Table(name = "users")
+public class User {
+    @Id
+    @GeneratedValue(strategy = GenerationType.AUTO)
+    private Long id;
+    private String name;
+    private String email;
+    private String password;
+    private boolean isEnabled;
+}
+````
