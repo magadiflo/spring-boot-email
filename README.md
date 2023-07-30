@@ -422,3 +422,212 @@ public class UserResource {
     }
 }
 ````
+
+## Configuración de la base de datos
+
+Cambiamos el ``application.properties`` por ``application.yml`` y agregamos las siguientes configuraciones:
+
+````yaml
+server:
+  port: ${SERVER_PORT}
+
+spring:
+  profiles:
+    active: ${ACTIVE_PROFILE:dev}
+
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_SQL_HOST}:${POSTGRES_SQL_PORT}/${POSTGRES_SQL_DB}
+    username: ${POSTGRES_SQL_USERNAME}
+    password: ${POSTGRES_SQL_PASSWORD}
+
+  jpa:
+    generate-ddl: true
+    show-sql: true
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: America/Lima
+        globally_quoted_identifiers: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+````
+
+Según se menciona en el tutorial, esta configuración es muy exagerada para el pequeño proyecto que estamos realizando,
+pero se hace de esta manera para tener una idea de cómo se realizan las configuraciones en aplicaciones grandes y
+desde ya ir adaptándonos.
+
+En las configuraciones tenemos la propiedad **spring.profiles.active** se utiliza para especificar qué perfil (o
+perfiles) se debe activar cuando la aplicación se inicie. En nuestro caso utilizamos el siguiente valor para esa
+configuración:
+
+````yaml
+${ACTIVE_PROFILE:dev}
+````
+
+Esta es una notación de expresión que se utiliza para **proporcionar un valor predeterminado en caso de que la variable
+de entorno ACTIVE_PROFILE no esté definida.** En este caso, si no se proporciona un valor para ACTIVE_PROFILE, se
+utilizará **el perfil dev como valor predeterminado.**
+
+Ahora, también hemos definido otras variables de entorno que no tienen valor predeterminado, tales como:
+
+````yaml
+${SERVER_PORT}
+${POSTGRES_SQL_USERNAME}
+${POSTGRES_SQL_PASSWORD}
+${POSTGRES_SQL_HOST}
+${POSTGRES_SQL_PORT}
+${POSTGRES_SQL_DB}
+````
+
+Otra configuración que vale la pena mencionar es la siguiente:
+
+````properties
+spring.jpa.properties.hibernate.globally_quoted_identifiers=true
+````
+
+Se utiliza para indicar que se deben citar globalmente los identificadores (nombres de tablas y columnas) en las
+consultas SQL generadas por Hibernate. Esto significa que todos los nombres de tablas y columnas se incluirán entre
+comillas en las consultas SQL generadas, lo que es útil cuando se trabaja con bases de datos que requieren que los
+identificadores sean citados.
+
+Con esta configuración, las consultas SQL generadas por Hibernate se verían así:
+
+````roomsql
+SELECT `MiEntidad`.`MiColumna` FROM `MiEntidad`;
+````
+
+De esta manera, la base de datos entenderá que los nombres de tablas y columnas están citados y procesará las consultas
+correctamente.
+
+### Creando perfiles de configuración
+
+Cuando trabajemos en una aplicación grande, por lo general, tendremos distintos entornos donde ejecutaremos nuestra
+aplicación: **dev, test, prod** entre otros. Nuestra aplicación debe tener la configuración según el entorno donde será
+ejecutado. En nuestro caso tenemos un archivo principal llamado ``application.properties`` donde estamos definiendo
+la configuración de la conexión a la base de datos. Esta configuración se establece de manera genérica, utilizando
+variables de entorno, de tal forma que, según el ambiente donde sea ejecutado, definiremos los valores para dichas
+variables de entorno.
+
+En la raíz del proyecto creamos el perfil para desarrollo: ``application-dev.yml``:
+
+````yaml
+#Database
+POSTGRES_SQL_USERNAME: postgres
+POSTGRES_SQL_PASSWORD: magadiflo
+POSTGRES_SQL_HOST: 127.0.0.1
+POSTGRES_SQL_PORT: 5432
+POSTGRES_SQL_DB: db_spring_boot_email
+
+#Server
+SERVER_PORT: 8081
+ACTIVE_PROFILE: dev
+````
+
+Ahora creamos el perfil para pruebas: ``application-test.yml``
+
+````yaml
+#Database
+POSTGRES_SQL_USERNAME: postgres
+POSTGRES_SQL_PASSWORD: magadiflo
+POSTGRES_SQL_HOST: 127.0.0.1
+POSTGRES_SQL_PORT: 5432
+POSTGRES_SQL_DB: db_test
+
+#Server
+SERVER_PORT: 8082
+ACTIVE_PROFILE: test
+````
+
+Ahora creamos el perfil para producción: ``application-prod.yml``
+
+````yaml
+#Database
+POSTGRES_SQL_USERNAME: postgres
+POSTGRES_SQL_PASSWORD: magadiflo
+POSTGRES_SQL_HOST: 127.0.0.1
+POSTGRES_SQL_PORT: 5432
+POSTGRES_SQL_DB: db_production
+
+#Server
+SERVER_PORT: 8083
+ACTIVE_PROFILE: prod
+````
+
+El archivo por defecto que contiene todas las configuraciones es el ``application.yml``, ahora si queremos definir un
+perfil, ya sea **dev, test, prod** o cualquier otro, lo único que haremos será crear con el mismo nombre del archivo
+por defecto, agregándole con un guion (-) el perfil que queremos ``application-{nombre_perfil}.properties`` o
+``application-{nombre_perfil}.yml``, por ejemplo:
+
+````
+# Perfiles
+
+application.yml       (por default)
+
+application-dev.yml   (para desarrollo)
+application-test.yml  (para pruebas)
+application-prod.yml  (para producción)
+````
+
+Ahora, como podemos observar **en cada perfil definimos el valor de las variables de entorno** que se aplicarán a
+nuestro archivo por defecto (application.yml). Además, **en cada archivo de configuración específico del perfil, podemos
+colocar las propiedades que deseemos personalizar para ese entorno.** Podemos sobrescribir las propiedades del archivo
+application.yml o agregar nuevas específicas del perfil.
+
+### Ejecutando perfil usando IntelliJ IDEA
+
+Vamos a ver varias opciones para **ejecutar un perfil determinado usando IntelliJ IDEA**:
+
+````
+- Seleccionar Run/Edit Configurations...
+- Seleccionamos la configuración de nuestra aplicación llamada: Main
+````
+
+Estando en este punto, podemos configurar el perfil de varias maneras. Suponiendo que queremos ejecutar el perfil test:
+
+**Opción 1:** En el input **Environment variables** utilizar la variable de ambiente definida en el **application.yml**
+
+> **Environment variables:** ACTIVE_PROFILE=test
+
+**Opción 2:** En el input **Environment variables** utilizar la configuración de selección de perfil que usa spring
+boot:
+
+> **Environment variables:** spring.profiles.active=test
+
+**Opción 3:** En esta opción no usaremos el **Environment variables**, sino que más bien iremos a la opción de
+**Modify options** y seleccionaremos **Add VM options**. Nos aparecerá un nuevo input donde escribiremos lo siguiente:
+
+> -Dspring.profiles.active=test
+
+### Ejecutando perfil usando la consola de comandos
+
+Para ejecutar nuestra aplicación seleccionando un perfil, debemos posicionarnos mediante cmd en la raíz del proyecto y
+ejecutar el siguiente comando:
+
+````bash
+mvn spring-boot:run -Dspring-boot.run.profiles=test
+````
+
+Otra opción sería, si generamos el .jar de la aplicación y luego ejecutamos el perfil deseado:
+
+````bash
+mvnw clean package
+````
+
+````bash
+java -jar -Dspring.profiles.active=test .\target\spring-boot-email-0.0.1-SNAPSHOT.jar 
+````
+
+````bash
+java -jar -DACTIVE_PROFILE=test .\target\spring-boot-email-0.0.1-SNAPSHOT.jar 
+````
+
+**IMPORTANTE**
+
+> Si no se especifica ningún perfil activo, Spring Boot utilizará las propiedades definidas en el archivo
+> application.yml por defecto. Ahora, este archivo de configuración (que es el por default), en la configuración del
+> **spring.profiles.active: ${ACTIVE_PROFILE:dev}** vemos que está usando una variable de entorno llamada
+> ACTIVE_PROFILE, y como no especificaremos ningún perfil activo de manera explícita, dicha variable no existirá, por lo
+> tanto, tomará el valor del **dev**, de esta manera **se activará el archivo del perfil application-dev.yml.**
+
