@@ -207,3 +207,69 @@ public interface IConfirmationRepository extends JpaRepository<Confirmation, Lon
 }
 ````
 
+## User Service
+
+Crearemos la interfaz **IUserService**:
+
+````java
+public interface IUserService {
+    User saveUser(User user);
+
+    Boolean verifyToken(String token);
+}
+````
+
+Creamos la implementación de la interfaz anterior quien agrupará los dos repositorios que creamos inicialmente.
+Antes de registrar al usuario, se hacen ciertas validaciones y se establece el valor de la propiedad **enabled** en
+falso.
+
+En el método **verify()** una vez verificado el token, establecemos la propiedad del usuario **enabled** en true, de
+esta manera el usuario queda habilitado en el sistema.
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class UserServiceImpl implements IUserService {
+
+    private final IUserRepository userRepository;
+    private final IConfirmationRepository confirmationRepository;
+
+    @Override
+    @Transactional
+    public User saveUser(User user) {
+        if (this.userRepository.existsByEmail(user.getEmail())) {
+            throw new RuntimeException(String.format("El email %s ya existe", user.getEmail()));
+        }
+
+        user.setEnabled(false);
+        this.userRepository.save(user);
+
+        Confirmation confirmation = new Confirmation(user);
+        this.confirmationRepository.save(confirmation);
+
+        // TODO enviar email a usuario con token
+
+        return user;
+    }
+
+    @Override
+    @Transactional
+    public Boolean verifyToken(String token) {
+        return this.confirmationRepository.findByToken(token)
+                .map(confirmationDB -> {
+
+                    String email = confirmationDB.getUser().getEmail();
+                    User userDB = this.userRepository.findByEmailIgnoreCase(email)
+                            .orElseThrow(() -> new RuntimeException(String.format("No existe el email %s", email)));
+
+                    userDB.setEnabled(true);
+                    this.userRepository.save(userDB);
+                    this.confirmationRepository.delete(confirmationDB);
+
+                    return Boolean.TRUE;
+                })
+                .orElseGet(() -> Boolean.FALSE);
+    }
+}
+````
