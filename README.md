@@ -188,3 +188,22 @@ public class Confirmation {
     }
 }
 ````
+
+## User Repository
+
+````java
+public interface IUserRepository extends JpaRepository<User, Long> {
+    Optional<User> findByEmailIgnoreCase(String email);
+
+    Boolean existsByEmail(String email);
+}
+````
+
+## Confirmation Repository
+
+````java
+public interface IConfirmationRepository extends JpaRepository<Confirmation, Long> {
+    Optional<Confirmation> findByToken(String token);
+}
+````
+
