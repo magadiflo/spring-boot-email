@@ -694,3 +694,77 @@ necesitamos crear una **contraseña de aplicación**.
      la contraseña que usemos para enviar los correos desde nuestra aplicación de Spring Boot.
 > 8. Selecciona **Hecho.**
 
+## Configuración de Email
+
+En nuestros archivos de configuración definiremos las siguientes variables relacionadas con nuestro servidor de correo
+Gmail. Es importante precisar que estas variables de configuración los agregaremos a los distintos ambientes:
+**application-dev.yml, application-test.yml, application-prod.yml** y dependiendo del ambiente a trabajar definiremos
+sus valores. En nuestro caso, el mismo valor para todos, pero cuando se trabaje en un ambiente real, debemos cambiar
+los valores por los que se usen en dicho ambiente:
+
+````yaml
+## Other properties
+
+## Email Config
+EMAIL_HOST: smtp.gmail.com
+EMAIL_PORT: 587
+EMAIL_ID: magadiflo@gmail.com
+EMAIL_PASSWORD: qdonjimehiaemcku
+VERIFY_EMAIL_HOST: http://localhost:${SERVER_PORT}
+````
+
+Ahora configuraremos el archivo de propiedad principal **application.yml (perfil default):**
+
+````yaml
+## Other properties
+
+spring:
+  # profiles
+  # datasource
+  # jpa
+
+  mail:
+    host: ${EMAIL_HOST}
+    port: ${EMAIL_PORT}
+    username: ${EMAIL_ID}
+    password: ${EMAIL_PASSWORD}
+    default-encoding: UTF-8
+    properties:
+      mail:
+        mime:
+          charset: UTF
+        smtp:
+          writetimeout: 10000       #10s ó 10000 ms
+          connectiontimeout: 10000  #10s ó 10000 ms
+          timeout: 10000            #10s ó 10000 ms
+          auth: true
+          starttls:
+            enable: true
+            required: true
+    # Configuración propia personalizada
+    verify:
+      host: ${VERIFY_EMAIL_HOST}
+
+````
+
+La configuración anterior hace **uso de las variables que definimos en los perfiles de configuración** para configurar
+todo lo relacionado con el servidor de mail que usaremos (Gmail).
+
+La siguiente configuración extraída de la configuración anterior, **es personalizada, no es propia de spring.mail**,
+pero nosotros podemos agregarlo sin problemas, nuestra configuración personalizada se vería de la siguiente manera
+si usáramos la extensión .properties: ``spring.mail.verify.host = ${VERIFY_EMAIL_HOST}``, **es nuestra configuración
+propia que posteriormente la usaremos dentro de la aplicación.**
+
+````yml
+spring:
+  mail:
+    # Configuración propia personalizada
+    verify:
+      host: ${VERIFY_EMAIL_HOST}
+````
+
+**NOTA**
+
+> La configuración del servidor de correo también la podemos hacer usando una clase de java y utilizando las variables
+> definidas en los archivos de configuración yml, pero según el tutor, es mejor utilizar el archivo de configuración.
+
