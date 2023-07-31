@@ -669,3 +669,28 @@ Ahora, revisamos la base de datos para observar los resultados obtenidos:
 Y por si quisiéramos ver la asociación generada en la base de datos:
 
 ![asociacion-users-confirmations.png](./assets/asociacion-users-confirmations.png)
+
+---
+
+# Email
+
+## Creando contraseña de aplicación Gmail
+
+Utilizaremos nuestro correo de Gmail para poder hacer el envío de correos, pero para no colocar nuestra contraseña real
+necesitamos crear una **contraseña de aplicación**.
+
+> Los pasos de la creación de una **Contraseña de Aplicación** para un correo de Gmail se encuentran en el siguiente
+> enlace [Iniciar sesión con contraseñas de aplicación](https://support.google.com/accounts/answer/185833?hl=es). De
+> todas maneras la colocaré aquí también:
+>
+> 1. Ve a tu [**cuenta de Google**](https://myaccount.google.com/).
+> 2. Selecciona **Seguridad.**
+> 3. En "Iniciar sesión en Google", selecciona **Verificación en dos pasos.**
+> 4. En la parte inferior de la página, selecciona **Contraseñas de aplicaciones.**
+> 5. En el select **seleccionar aplicación** elige **otra (nombre personalizado)** e introduce un nombre que te ayude a
+     recordar dónde vas a utilizar la contraseña de aplicación.
+> 6. Selecciona **Generar.**
+> 7. Se mostrará la contraseña de aplicación generada de 16 caracteres, copiarla y no compartirla con nadie. Esta será
+     la contraseña que usemos para enviar los correos desde nuestra aplicación de Spring Boot.
+> 8. Selecciona **Hecho.**
+
