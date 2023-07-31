@@ -131,14 +131,19 @@ anotación @Column, para cambiar el nombre si quisiéramos.
 
 ### (2) @CreatedDate
 
+Es una anotación que se utiliza en combinación con otras anotaciones **para realizar auditoría.**
 Esta anotación **se utiliza para marcar un campo de una entidad como la fecha en la que se creó el registro en la base
 de datos.** Cuando se guarda por primera vez una nueva instancia de la entidad, **Spring Data Jpa AUTOMÁTICAMENTE
 establecerá el valor del campo anotado con @CreatedDate en la fecha y hora actuales.**
 
-Por lo tanto, si observamos el constructor con parámetro vemos (2.1) ``this.createdDate = LocalDateTime.now();``,
-**según mi análisis esto ya no debería ir**, ya que la anotación **@CreatedDate** AUTOMÁTICAMENTE lo hace por nosotros.
-En consecuencia, yo quitaré dicha línea de código y dejaré que la anotación **@CreatedDate** agregue la fecha
-automáticamente por mí.
+**La anotación @CreatedDate por sí sola no funcionará** de forma automática para establecer la fecha de creación de un
+objeto. **Requiere algunas configuraciones adicionales para que funcione correctamente,** como configurar la auditoría
+con la anotación **@EnableJpaAuditing**, extender la entidad con clases base de auditoría. **Es imprescindible añadir la
+anotación @EnableJpaAuditing para que Spring Boot reconozca las anotaciones de auditoría para nuestra Base de Datos.**
+
+Por lo tanto, como es una anotación orientada a la auditoría, en nuestro caso no será necesario utilizarlo, ya que
+para poblar el campo **createdDate** lo haremos manualmente, dentro del constructor que tiene el parámetro del usuario:
+**(2.1)** ``this.createdDate = LocalDateTime.now();``.
 
 ### Asociación Unidireccional @OneToOne
 
@@ -159,8 +164,8 @@ atributo user para inferir la entidad objetivo, que es User en este caso.
 
 ### Clase de dominio Confirmation
 
-Finalmente, luego de haber quitado algunas anotaciones y atributos que ya por defecto se establecen, mi clase de dominio
-**Confirmation** quedaría de la siguiente manera:
+Finalmente, luego de haber quitado algunas anotaciones y atributos que por defecto se establecen o que en nuestro
+caso no requerimos, mi clase de dominio **Confirmation** quedaría de la siguiente manera:
 
 ````java
 
@@ -174,8 +179,6 @@ public class Confirmation {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private Long id;
     private String token;
-
-    @CreatedDate
     private LocalDateTime createdDate;
 
     @OneToOne
@@ -184,6 +187,7 @@ public class Confirmation {
 
     public Confirmation(User user) {
         this.user = user;
+        this.createdDate = LocalDateTime.now();
         this.token = UUID.randomUUID().toString();
     }
 }
@@ -631,3 +635,37 @@ java -jar -DACTIVE_PROFILE=test .\target\spring-boot-email-0.0.1-SNAPSHOT.jar
 > ACTIVE_PROFILE, y como no especificaremos ningún perfil activo de manera explícita, dicha variable no existirá, por lo
 > tanto, tomará el valor del **dev**, de esta manera **se activará el archivo del perfil application-dev.yml.**
 
+## Prueba de humo
+
+Utilizamos curl para hacer la petición a nuestro endpoint y registrar un usuario:
+
+````bash
+curl -v -X POST -H "Content-Type: application/json" -d "{\"name\": \"Karen Caldas\", \"email\": \"kasary@gmail.com\", \"password\": \"12345\"}" http://localhost:8081/api/v1/users | jq
+
+--- Response
+< HTTP/1.1 201
+<
+{
+  "timeStamp": "2023-07-30T20:28:27.810846300",
+  "statusCode": 201,
+  "status": "CREATED",
+  "message": "Usuario creado",
+  "data": {
+    "user": {
+      "id": 252,
+      "name": "Karen Caldas",
+      "email": "kasary@gmail.com",
+      "password": "12345",
+      "enabled": false
+    }
+  }
+}
+````
+
+Ahora, revisamos la base de datos para observar los resultados obtenidos:
+
+![registrando-usuario-y-confirmacion.png](./assets/registrando-usuario-y-confirmacion.png)
+
+Y por si quisiéramos ver la asociación generada en la base de datos:
+
+![asociacion-users-confirmations.png](./assets/asociacion-users-confirmations.png)
