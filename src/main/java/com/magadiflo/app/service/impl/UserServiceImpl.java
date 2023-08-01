@@ -4,6 +4,7 @@ import com.magadiflo.app.domain.Confirmation;
 import com.magadiflo.app.domain.User;
 import com.magadiflo.app.repository.IConfirmationRepository;
 import com.magadiflo.app.repository.IUserRepository;
+import com.magadiflo.app.service.IEmailService;
 import com.magadiflo.app.service.IUserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -15,6 +16,7 @@ public class UserServiceImpl implements IUserService {
 
     private final IUserRepository userRepository;
     private final IConfirmationRepository confirmationRepository;
+    private final IEmailService emailService;
 
     @Override
     @Transactional
@@ -30,6 +32,7 @@ public class UserServiceImpl implements IUserService {
         this.confirmationRepository.save(confirmation);
 
         // TODO enviar email a usuario con token
+        this.emailService.sendSimpleMailMessage(user.getName(), user.getEmail(), confirmation.getToken());
 
         return user;
     }

@@ -813,7 +813,7 @@ public class EmailServiceImpl implements IEmailService {
             message.setSubject("Verificación de cuenta de nuevo usuario");
             message.setFrom(this.fromEmail);
             message.setTo(to);
-            message.setText("Hola, la vicuña es del Perú");
+            message.setText("Hola, la vicuña es del Perú. El token que se te generó es: " + token);
 
             this.javaMailSender.send(message);
         } catch (Exception e) {
@@ -825,3 +825,69 @@ public class EmailServiceImpl implements IEmailService {
     /* other methods without implementation */
 }
 ````
+
+## Enviando email simple al registrar nuevo usuario
+
+Luego de registrar a un usuario, le enviaremos un correo simple utilizando el método **sendSimpleMailMessage()** que
+implementamos en la sección anterior.
+
+En nuestro servicio **UserServiceImpl** debemos inyectar el servicio del email, para eso utilizamos la interfaz
+**IEmailService** que en tiempo de ejecución tomará el valor de su implementación **EmailServiceImpl**. Dentro del
+método **saveUser()** utilizamos **los datos del usuario registrado** y de la confirmación para hacer el envío del
+correo:
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class UserServiceImpl implements IUserService {
+
+    /* other injected services */
+    private final IEmailService emailService;
+
+    @Override
+    @Transactional
+    public User saveUser(User user) {
+        /* other code */
+        this.userRepository.save(user);
+
+        Confirmation confirmation = new Confirmation(user);
+        this.confirmationRepository.save(confirmation);
+
+        // TODO enviar email a usuario con token
+        this.emailService.sendSimpleMailMessage(user.getName(), user.getEmail(), confirmation.getToken());
+
+        return user;
+    }
+
+    /* other method */
+}
+````
+
+Levantamos la aplicación y realizamos una petición al endpoint para poder registrar un usuario:
+
+````bash
+curl -v -X POST -H "Content-Type: application/json" -d "{\"name\": \"Martín Díaz\", \"email\": \"magadiflo@gmail.com\", \"password\": \"12345\"}" http://localhost:8081/api/v1/users | jq
+
+--- Response
+HTTP/1.1 201
+{
+  "timeStamp": "2023-07-31T20:13:22.257878400",
+  "statusCode": 201,
+  "status": "CREATED",
+  "message": "Usuario creado",
+  "data": {
+    "user": {
+      "id": 302,
+      "name": "Martín Díaz",
+      "email": "magadiflo@gmail.com",
+      "password": "12345",
+      "enabled": false
+    }
+  }
+}
+````
+
+Finalmente, revisamos el correo y verificamos que nos haya llegado el email:
+
+![email-simple.png](./assets/email-simple.png)

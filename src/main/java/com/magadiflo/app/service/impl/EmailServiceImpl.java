@@ -25,7 +25,7 @@ public class EmailServiceImpl implements IEmailService {
             message.setSubject("Verificación de cuenta de nuevo usuario");
             message.setFrom(this.fromEmail);
             message.setTo(to);
-            message.setText("Hola, la vicuña es del Perú");
+            message.setText("Hola, la vicuña es del Perú. El token que se te generó es: " + token);
 
             this.javaMailSender.send(message);
         } catch (Exception e) {
