@@ -768,3 +768,22 @@ spring:
 > La configuración del servidor de correo también la podemos hacer usando una clase de java y utilizando las variables
 > definidas en los archivos de configuración yml, pero según el tutor, es mejor utilizar el archivo de configuración.
 
+## Email Service Interface
+
+Creamos una interfaz que contendrá los métodos que abarcarán los escenarios posibles al enviar correos:
+
+````java
+public interface IEmailService {
+    void sendSimpleMailMessage(String name, String to, String token);
+
+    void sendMimeMessageWithAttachments(String name, String to, String token);
+
+    void sendMimeMessageWithEmbeddedImages(String name, String to, String token);
+
+    void sendMimeMessageWithEmbeddedFiles(String name, String to, String token);
+
+    void sendHtmlEmail(String name, String to, String token);
+
+    void sendHtmlEmailWithEmbeddedFiles(String name, String to, String token);
+}
+````
