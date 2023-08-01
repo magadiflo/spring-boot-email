@@ -891,3 +891,91 @@ HTTP/1.1 201
 Finalmente, revisamos el correo y verificamos que nos haya llegado el email:
 
 ![email-simple.png](./assets/email-simple.png)
+
+## Email Utilities
+
+Crearemos un nuevo package llamado **utils** donde agregaremos una clase de utilidad para la implementación de nuestro
+servicio de email. Esta clase tendrá dos **métodos que podrán ser reutilizados, esa será su finalidad:**
+
+````java
+public class EmailUtils {
+    public static String getEmailMessage(String name, String host, String token) {
+        return "(Perú Vicuña) Hola " + name + ",\n\n" +
+                "Tu nueva cuenta ha sido creada. " +
+                "Por favor, haga clic en el enlace de abajo para verificar su cuenta" + "\n\n" +
+                getVerificationUrl(host, token);
+    }
+
+    public static String getVerificationUrl(String host, String token) {
+        return String.format("%s/api/v1/users?token=%s", host, token);
+    }
+}
+````
+
+En nuestra clase de implementación **EmailServiceImpl** utilizamos la clase de utilidad para poder generar el cuerpo del
+mensaje de nuestro correo a enviar:
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class EmailServiceImpl implements IEmailService {
+    /*other code*/
+    @Override
+    public void sendSimpleMailMessage(String name, String to, String token) {
+        try {
+            /*other code*/
+            message.setText(EmailUtils.getEmailMessage(name, this.host, token)); //<-- Generando cuerpo del mensaje con nuestra clase de utilidad
+            /*other code*/
+        } catch (Exception e) {/*other code*/}
+    }
+}
+````
+
+Listo, ahora volvemos a ejecutar nuestra aplicación, y realizamos la petición para registrar un usuario:
+
+````bash
+curl -v -X POST -H "Content-Type: application/json" -d "{\"name\": \"Martín Díaz\", \"email\": \"magadiflo@gmail.com\", \"password\": \"12345\"}" http://localhost:8081/api/v1/users | jq
+
+--- Response
+HTTP/1.1 201
+{
+  "timeStamp": "2023-08-01T16:45:11.553094",
+  "statusCode": 201,
+  "status": "CREATED",
+  "message": "Usuario creado",
+  "data": {
+    "user": {
+      "id": 352,
+      "name": "Martín Díaz",
+      "email": "magadiflo@gmail.com",
+      "password": "12345",
+      "enabled": false
+    }
+  }
+}
+````
+
+Verificamos que nos haya llegado el correo:
+
+![verificacion-1.0](./assets/verificacion-1.0.png)
+
+Verificamos que tengamos el usuario y su confirmación registrados en la base de datos, **pero en la columna
+is_enabled debe estar en falso**, esperando que el usuario haga la verificación de su cuenta:
+
+![verificacion-1.1](./assets/verificacion-1.1.png)
+
+Ahora, **hacemos clic en el enlace proporcionado en el correo de verificación**, esto nos llevará a la siguiente página
+con la obtención del siguiente resultado:
+
+![verificacion-1.2](./assets/verificacion-1.2.png)
+
+El resultado anterior muestra el funcionamiento de nuestro endpoint ``/api/v1/users`` que está esperando recibir un
+parámetro llamado ``token``, ese endpoint corresponde al método handler **confirmUserAccount()** de nuestro rest
+controller **UserResource**.
+
+Entonces, cuando se hizo clic en el enlace de verificación se puso en funcionamiento el endpoint para verificar la
+cuenta del usuario, eso significa que **nuestra base de datos también fue modificada** cambiando el valor de la columna
+**is_enabled** en **true** y eliminando todo el registro del token de la tabla **confirmations**:
+
+![verificacion-1.3](./assets/verificacion-1.3.png)
