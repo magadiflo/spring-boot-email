@@ -787,3 +787,41 @@ public interface IEmailService {
     void sendHtmlEmailWithEmbeddedFiles(String name, String to, String token);
 }
 ````
+
+## Implementando el envío de email de texto simple
+
+Creamos la clase de implementación de la interfaz creada anteriormente e implementamos de momento el primer método para
+poder enviar un correo con texto simple:
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class EmailServiceImpl implements IEmailService {
+
+    private final JavaMailSender javaMailSender;
+
+    @Value("${spring.mail.verify.host}")
+    private String host;
+    @Value("${spring.mail.username}")
+    private String fromEmail;
+
+    @Override
+    public void sendSimpleMailMessage(String name, String to, String token) {
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setSubject("Verificación de cuenta de nuevo usuario");
+            message.setFrom(this.fromEmail);
+            message.setTo(to);
+            message.setText("Hola, la vicuña es del Perú");
+
+            this.javaMailSender.send(message);
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            throw new RuntimeException("Error SimpleMail: " + e.getMessage());
+        }
+    }
+
+    /* other methods without implementation */
+}
+````
