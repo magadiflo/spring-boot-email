@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @RequiredArgsConstructor
@@ -20,6 +21,7 @@ public class EmailServiceImpl implements IEmailService {
     private String fromEmail;
 
     @Override
+    @Async
     public void sendSimpleMailMessage(String name, String to, String token) {
         try {
             SimpleMailMessage message = new SimpleMailMessage();
@@ -36,26 +38,31 @@ public class EmailServiceImpl implements IEmailService {
     }
 
     @Override
+    @Async
     public void sendMimeMessageWithAttachments(String name, String to, String token) {
 
     }
 
     @Override
+    @Async
     public void sendMimeMessageWithEmbeddedImages(String name, String to, String token) {
 
     }
 
     @Override
+    @Async
     public void sendMimeMessageWithEmbeddedFiles(String name, String to, String token) {
 
     }
 
     @Override
+    @Async
     public void sendHtmlEmail(String name, String to, String token) {
 
     }
 
     @Override
+    @Async
     public void sendHtmlEmailWithEmbeddedFiles(String name, String to, String token) {
 
     }

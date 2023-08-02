@@ -979,3 +979,218 @@ cuenta del usuario, eso significa que **nuestra base de datos también fue modif
 **is_enabled** en **true** y eliminando todo el registro del token de la tabla **confirmations**:
 
 ![verificacion-1.3](./assets/verificacion-1.3.png)
+
+## Experimentando demora al registrar un usuario
+
+Veamos lo que ocurre cuando realizamos una petición al endpoint para registrar un usuario, sabemos que luego de que nos
+registre en la base de datos, enviará un correo de verificación:
+
+![respuesta](./assets/respuesta-1.0.png)
+
+En la imagen anterior observamos que se está realizando la petición el endpoint de registro de usuario
+**tomándole APROXIMADAMENTE 5 SEGUNDOS en obtener la respuesta** que se muestra en la imagen inferior:
+
+![respuesta](./assets/respuesta-1.1.png)
+
+Lo que está pasando es lo siguiente, luego de que el cliente hace la petición al endpoint de registro de usuario, este
+se mapea al método handler **createUser()**, este método llama al método **saveUser()** del servicio
+**UserServiceImpl**. Veamos lo que contiene el método **saveUser()**:
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class UserServiceImpl implements IUserService {
+    @Override
+    @Transactional
+    public User saveUser(User user) {
+        if (this.userRepository.existsByEmail(user.getEmail())) {
+            throw new RuntimeException(String.format("El email %s ya existe", user.getEmail()));
+        }
+
+        user.setEnabled(false);
+        this.userRepository.save(user);                             // (1)
+
+        Confirmation confirmation = new Confirmation(user);
+        this.confirmationRepository.save(confirmation);             // (2)
+
+        // TODO enviar email a usuario con token
+        this.emailService.sendSimpleMailMessage(user.getName(), user.getEmail(), confirmation.getToken()); // (3)
+
+        return user;    // (4)
+    }
+}
+````
+
+En el código anterior observamos que **el (1) user y el (2) confirmation se registran de manera casi instantánea** en la
+base de datos, pero **cuando llega a la línea donde está el método (3) sendSimpleMailMessage()** es donde se experimenta
+la demora, pues ese método se encarga de enviar el correo, y **mientras no termine su ejecución, el usuario ya
+registrado aún no se devolverá al cliente (4).**
+
+Para mejorar el comportamiento anterior, **haremos que los métodos de envío de correo sean asíncronos**, es decir,
+**trabajen en un hilo separado del hilo que se creó con la solicitud**. Para eso utilizaremos la anotación:
+**@Async**, la cual nos **permitirá procesar y ejecutar otros métodos en un nuevo thread.** Es decir, no vamos a tener
+que esperar por la ejecución de la otra parte de nuestro código.
+
+### [@Async](https://www.baeldung.com/spring-async)
+
+El uso de @Async nos va a proporcionar y permitir la ejecución asíncrona en Spring, la cual es una técnica de
+programación que permite el **procesamiento paralelo y separar la carga de trabajo del thread principal** creando nuevos
+threads worker.
+
+**Anotar un método de un "bean" con @Async hará que se ejecute en un hilo separado.** En otras palabras, la persona que
+llama no esperará a que se complete el método llamado.
+
+Repasemos las reglas. @Async tiene dos limitaciones:
+
+- Debe aplicarse únicamente a métodos públicos.
+- La auto-invocación (llamar al método asíncrono desde dentro de la misma clase) no funcionará.
+
+Las razones son simples: el método debe ser público para que pueda ser redireccionado. Y la autoinvocación no funciona
+porque omite el proxy y llama directamente al método subyacente.
+
+### [@EnableAsync](https://www.baeldung.com/spring-async)
+
+La anotación **@EnableAsync** nos permitirá **habilitar el procesamiento asíncrono** con la **configuración de java**.
+Haremos esto agregando el **@EnableAsync a una clase de configuración:**
+
+````java
+
+@Configuration
+@EnableAsync
+public class SpringAsyncConfig {
+    /*...*/
+}
+````
+
+### [Métodos con tipo de retorno void](https://www.baeldung.com/spring-async)
+
+Una de las formas de hacer **uso de @Async es invocando a un método que devolverá void**, de esta manera no esperamos
+ningún resultado y el hilo principal no esperará resultado del worker thread.
+
+Esta es la forma sencilla de configurar un método con tipo de retorno void para que se ejecute de forma asincrónica:
+
+````java
+
+@Component
+public class AsyncComponent {
+    @Async
+    public void asyncMethodWithVoidReturnType() {
+        System.out.println("Ejecutar método de forma asíncrona. " + Thread.currentThread().getName());
+    }
+}
+````
+
+### [Manejo de excepciones](https://www.baeldung.com/spring-async)
+
+Cuando el tipo de retorno de un método es un **Future<>**, el manejo de excepciones es fácil. El método Future.get()
+producirá la excepción.
+
+Pero **si el tipo de retorno es void, las excepciones no se propagarán al subproceso de llamada.** Por lo tanto,
+necesitamos agregar configuraciones adicionales para manejar las excepciones.
+
+Crearemos un controlador de excepciones asincrónico personalizado implementando la interfaz
+**AsyncUncaughtExceptionHandler**. El método **handleUncaughtException()** se invoca cuando hay excepciones asincrónicas
+no detectadas:
+
+````java
+public class CustomAsyncExceptionHandler implements AsyncUncaughtExceptionHandler {
+    @Override
+    public void handleUncaughtException(Throwable throwable, Method method, Object... obj) {
+
+        System.out.println("Exception message - " + throwable.getMessage());
+        System.out.println("Method name - " + method.getName());
+        for (Object param : obj) {
+            System.out.println("Parameter value - " + param);
+        }
+    }
+}
+````
+
+En el siguiente fragmento de código, observamos la interfaz AsyncConfigurer implementada por la clase de configuración.
+Como parte de eso, también **necesitamos reemplazar el método getAsyncUncaughtExceptionHandler() para devolver nuestro
+controlador de excepciones asincrónico personalizado:**
+
+````java
+
+@Configuration
+@EnableAsync
+public class SpringAsyncConfig implements AsyncConfigurer {
+    @Override
+    public AsyncUncaughtExceptionHandler getAsyncUncaughtExceptionHandler() {
+        return new CustomAsyncExceptionHandler();
+    }
+}
+````
+
+**NOTA**
+> **No confundir una aplicación asíncrona con una aplicación reactiva.**
+
+## Mejorando el envío de email al registrar un nuevo usuario
+
+En la sección anterior vimos el problema y cómo el uso de la anotación **@Async** nos ayuda a resolverlo. En esta
+sección procederemos a su implementación.
+
+Lo primero que realizaremos será crear una clase de configuración donde **habilitaremos el uso de la anotación @Async**.
+En el tutorial que sigo, el tutor habilita el uso de la anotación **@Async** en la clase principal sin crear ninguna
+clase adicional. En mi caso, sí creo una clase de configuración, ya que revisando la web de **baeldung**, crean esta
+clase de configuración para manejar las excepciónes en los métodos asíncronos.
+
+````java
+
+@EnableAsync //<-- Habilitamos el uso de la anotación @Async
+@Configuration
+public class SpringAsyncConfig {
+
+}
+````
+
+Como segundo paso, es anotar los métodos void con **@Async**, en mi caso, anotaré todos los métodos que enviarán correo.
+**Cada vez que un método anotado con @Async sea invocado se creará un nuevo Thread.**
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class EmailServiceImpl implements IEmailService {
+
+    /*other code*/
+
+    @Override
+    @Async //<-- Anotación que marca un método como candidato para ejecución asíncrona.
+    public void sendSimpleMailMessage(String name, String to, String token) {
+        /* other code */
+    }
+
+    @Override
+    @Async  //<--
+    public void sendMimeMessageWithAttachments(String name, String to, String token) {
+    }
+
+    @Override
+    @Async  //<--
+    public void sendMimeMessageWithEmbeddedImages(String name, String to, String token) {
+    }
+
+    @Override
+    @Async  //<--
+    public void sendMimeMessageWithEmbeddedFiles(String name, String to, String token) {
+    }
+
+    @Override
+    @Async  //<--
+    public void sendHtmlEmail(String name, String to, String token) {
+    }
+
+    @Override
+    @Async  //<--
+    public void sendHtmlEmailWithEmbeddedFiles(String name, String to, String token) {
+    }
+}
+````
+
+Listo, ahora realizamos la petición nuevamente y veremos que **ya no se demora en retornar la respuesta, es casi de
+inmediato.**
+
+![respuesta](./assets/respuesta-1.2.png)
+
