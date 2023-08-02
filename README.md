@@ -1132,13 +1132,13 @@ En la sección anterior vimos el problema y cómo el uso de la anotación **@Asy
 sección procederemos a su implementación.
 
 Lo primero que realizaremos será crear una clase de configuración donde **habilitaremos el uso de la anotación @Async**.
-En el tutorial que sigo, el tutor habilita el uso de la anotación **@Async** en la clase principal sin crear ninguna
+``En el tutorial que sigo, el tutor habilita el uso de la anotación @Async en la clase principal`` sin crear ninguna
 clase adicional. En mi caso, sí creo una clase de configuración, ya que revisando la web de **baeldung**, crean esta
 clase de configuración para manejar las excepciónes en los métodos asíncronos.
 
 ````java
 
-@EnableAsync //<-- Habilitamos el uso de la anotación @Async
+@EnableAsync //<-- Habilitamos el uso de la anotación @Async (soporte para métodos asíncronos)
 @Configuration
 public class SpringAsyncConfig {
 
@@ -1194,3 +1194,103 @@ inmediato.**
 
 ![respuesta](./assets/respuesta-1.2.png)
 
+## Manejo de excepciones en los métodos anotados con @Async
+
+**Este apartado no es parte del tutorial,** pero lo quise tratar por si en algún momento requiero implementar
+validaciones a los métodos asíncronos. Antes de ver la implementación realizada, debemos conocer algunas definiciones
+de las interfaces y métodos que usaremos:
+
+### AsyncUncaughtExceptionHandler
+
+Una estrategia para manejar excepciones no detectadas lanzadas desde métodos asincrónicos.
+
+**Un método asíncrono generalmente devuelve una instancia java.util.concurrent.Future** que brinda acceso a la excepción
+subyacente. **Cuando el método no proporciona ese tipo de valor devuelto**, este controlador se puede usar para
+administrar tales **excepciones no detectadas.**
+
+### handleUncaughtException()
+
+Recibe parámetros de la excepción no detectada que fue lanzada desde un método asíncrono:
+
+- ex – la excepción lanzada por el método asíncrono method
+- method - el método asíncrono
+- params - los parámetros usados para invocar el método
+
+### AsyncConfigurer
+
+Interfaz que implementarán las clases de @Configuration anotadas con @EnableAsync que deseen personalizar la instancia
+de **Executor** utilizada al procesar invocaciones de métodos asincrónicos o la instancia
+**AsyncUncaughtExceptionHandler** utilizada para procesar la excepción lanzada desde el método asincrónico con
+**tipo de retorno void.**
+
+## Implementando el manejo de excepciones en los métodos anotados con @Async
+
+Ahora, vamos de lleno a implementar el manejo de excepciones. Primero crearemos un controlador de excepciones asíncrono
+personalizado implementando la interfaz **AsyncUncaughtExceptionHandler**:
+
+````java
+public class CustomAsyncExceptionHandler implements AsyncUncaughtExceptionHandler {
+    @Override
+    public void handleUncaughtException(Throwable ex, Method method, Object... params) {
+        System.out.println("Mensaje de excepción: " + ex.getMessage());
+        System.out.println("Nombre del método: " + method.getName());
+        for (Object param : params) {
+            System.out.println("Valor del parámetro: " + param);
+        }
+    }
+}
+````
+
+En nuestra clase de configuración que ya habíamos creado en capítulos anteriores implementaremos la interfaz
+**AsyncConfigurer** y sobreescribiremos su método **getAsyncUncaughtExceptionHandler()** para retornar la clase de
+configuración creada anteriormente:
+
+````java
+
+@EnableAsync
+@Configuration
+public class SpringAsyncConfig implements AsyncConfigurer {
+
+    @Override
+    public AsyncUncaughtExceptionHandler getAsyncUncaughtExceptionHandler() {
+        return new CustomAsyncExceptionHandler();
+    }
+}
+````
+
+Listo, ahora ejecutamos la aplicación y realicemos una petición registrando un usuario, pero para observar el manejo
+de la excepción **nos desconectaremos de internet** y veremos el comportamiento:
+
+````bash
+Mail server connection failed. Failed messages: com.sun.mail.util.MailConnectException: Couldn't connect to host, port: smtp.gmail.com, 587; timeout 10000;
+  nested exception is:
+	java.net.NoRouteToHostException: No route to host: no further information
+Mensaje de excepción: Error SimpleMail: Mail server connection failed. Failed messages: com.sun.mail.util.MailConnectException: Couldn't connect to host, port: smtp.gmail.com, 587; timeout 10000;
+  nested exception is:
+	java.net.NoRouteToHostException: No route to host: no further information
+Nombre del método: sendSimpleMailMessage
+Valor del parámetro: Martín Díaz
+Valor del parámetro: magadiflo@gmail.com
+Valor del parámetro: 48f891c0-353e-481c-8423-4a6ae633217b
+````
+
+Como observamos, nuestro método **handleUncaughtException(...)** está mostrando las impresiones que definimos. Vemos que
+el envío del correo no pudo efectuarse, eso podría ser registrado en el log. Pero, **si revisamos la base de datos, allí
+sí tenemos registrado al usuario.**
+
+## Importancia de manejar excepciones en métodos anotados con @Async
+
+1. **Registros y monitoreo:** Si no se manejan las excepciones adecuadamente, es posible que las excepciones ocurridas
+   en los métodos asíncronos no sean reportadas o registradas correctamente. Esto podría dificultar la identificación y
+   solución de problemas en el sistema.
+
+2. **Comportamiento inesperado:** Si una excepción no es manejada en un método asíncrono, el hilo de ejecución del
+   método terminará abruptamente, lo que puede resultar en un comportamiento inesperado del programa o incluso en la
+   pérdida de información importante.
+
+3. **Procesos en segundo plano:** Los métodos asíncronos suelen utilizarse para realizar tareas en segundo plano, como
+   enviar correos electrónicos, procesar tareas largas o ejecutar trabajos programados. Si no se manejan las excepciones
+   adecuadamente, estas tareas en segundo plano podrían quedar incompletas o fallar silenciosamente.
+
+4. **Salud del sistema:** Un fallo no manejado en un método asíncrono podría impactar negativamente en la salud general
+   del sistema, especialmente si los errores no se reportan ni manejan adecuadamente.
