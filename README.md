@@ -1294,3 +1294,97 @@ sí tenemos registrado al usuario.**
 
 4. **Salud del sistema:** Un fallo no manejado en un método asíncrono podría impactar negativamente en la salud general
    del sistema, especialmente si los errores no se reportan ni manejan adecuadamente.
+
+## Enviando email con archivos adjuntos
+
+En nuestra clase **EmailServiceImpl** implementamos el método **sendMimeMessageWithAttachments()** con el que enviaremos
+archivos adjuntos. Además, debemos crear un método que nos retorne un **MimeMessage**, que **representa un mensaje de
+correo electrónico de estilo MIME,** crearemos ese método para poder reutilizarlo. Veamos la implemetación realizada:
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class EmailServiceImpl implements IEmailService {
+    /* other code */
+    @Override
+    @Async
+    public void sendMimeMessageWithAttachments(String name, String to, String token) {
+        try {
+            MimeMessage message = this.getMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setPriority(1); //Establece la prioridad (encabezado "X-Priority") del mensaje. Entre 1(más alto) y 5 (más bajo)
+            helper.setSubject("Verificación de cuenta de nuevo usuario");
+            helper.setFrom(this.fromEmail);
+            helper.setTo(to);
+            helper.setText(EmailUtils.getEmailMessage(name, this.host, token));
+
+            // Agregando archivos adjuntos
+            FileSystemResource dog = new FileSystemResource(new File(System.getProperty("user.home") + "/Downloads/dog.jpg"));
+            FileSystemResource programming = new FileSystemResource(new File(System.getProperty("user.home") + "/Downloads/programming.jpg"));
+            FileSystemResource angular = new FileSystemResource(new File(System.getProperty("user.home") + "/Downloads/angular.pdf"));
+
+            helper.addAttachment(dog.getFilename(), dog);
+            helper.addAttachment(programming.getFilename(), programming);
+            helper.addAttachment(angular.getFilename(), angular);
+
+            this.javaMailSender.send(message);
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            throw new RuntimeException("Error SimpleMail: " + e.getMessage());
+        }
+    }
+
+    private MimeMessage getMimeMessage() {
+        return this.javaMailSender.createMimeMessage();
+    }
+}
+````
+
+Como observamos en la implementación anterior, estamos usando la clase **MimeMessageHelper, que es una clase auxiliar
+para completar un MimeMessage.** Refleja los configuradores simples de org.springframework.mail.SimpleMailMessage,
+aplicando directamente los valores al MimeMessage subyacente. Permite definir una codificación de caracteres para todo
+el mensaje, aplicada automáticamente por todos los métodos de esta clase auxiliar. **Ofrece soporte para contenido de
+texto HTML, elementos en línea como imágenes y archivos adjuntos de correo típicos.** También admite nombres personales
+que acompañan a las direcciones de correo.
+
+Para poder agregar los **archivos adjuntos (attachments)** utilizamos la clase **MimeMessageHelper** que utiliza un
+**FileSystemResource de Spring** para poder adjuntar el recurso. En nuestro caso, adjuntaremos tres archivos: dos
+imágenes + un archivo pdf.
+
+Los archivos que se adjuntarán en el correo los coloqué en el directorio de descargas:
+
+````
+C:\Users\USUARIO\Downloads\dog.jpg
+C:\Users\USUARIO\Downloads\programming.jpg
+C:\Users\USUARIO\Downloads\angular.jpg
+````
+
+![archivos-adjuntar-1.0.png](./assets/archivos-adjuntar-1.0.png)
+
+Ahora, en nuestra clase **UserServiceImpl** cambiamos el método **sendSimpleMailMessage()** que usámos anteriormente
+para enviar correos simples, por nuestra nueva implementación:
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class UserServiceImpl implements IUserService {
+    @Override
+    @Transactional
+    public User saveUser(User user) {
+        /* other code*/
+
+        // Enviando email a usuarios de forma asíncrona
+        //this.emailService.sendSimpleMailMessage(user.getName(), user.getEmail(), confirmation.getToken());
+        this.emailService.sendMimeMessageWithAttachments(user.getName(), user.getEmail(), confirmation.getToken());
+
+        return user;
+    }
+}
+````
+
+Listo, ahora ejecutamos la aplicación y comprobaos que se hayan enviado nuestros tres archivos al correo:
+
+![archivos-adjuntar-1.1.png](./assets/archivos-adjuntar-1.1.png)
+

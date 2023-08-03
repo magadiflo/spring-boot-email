@@ -31,8 +31,9 @@ public class UserServiceImpl implements IUserService {
         Confirmation confirmation = new Confirmation(user);
         this.confirmationRepository.save(confirmation);
 
-        // TODO enviar email a usuario con token
-        this.emailService.sendSimpleMailMessage(user.getName(), user.getEmail(), confirmation.getToken());
+        // Enviando email a usuarios de forma asíncrona
+        //this.emailService.sendSimpleMailMessage(user.getName(), user.getEmail(), confirmation.getToken());
+        this.emailService.sendMimeMessageWithAttachments(user.getName(), user.getEmail(), confirmation.getToken());
 
         return user;
     }
