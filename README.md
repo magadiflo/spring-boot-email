@@ -1388,3 +1388,69 @@ Listo, ahora ejecutamos la aplicación y comprobaos que se hayan enviado nuestro
 
 ![archivos-adjuntar-1.1.png](./assets/archivos-adjuntar-1.1.png)
 
+## Enviando email con archivos embebidos
+
+Implementamos nuestro método **sendMimeMessageWithEmbeddedFiles()** utilizando el método **addInline()**, este método
+nos permite agregar un elemento en línea al MimeMessage, tomando el contenido de un
+org.springframework.core.io.Resource.
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class EmailServiceImpl implements IEmailService {
+    /* other code */
+    @Override
+    @Async
+    public void sendMimeMessageWithEmbeddedFiles(String name, String to, String token) {
+        try {
+            MimeMessage message = this.getMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setPriority(1);
+            helper.setSubject("Verificación de cuenta de nuevo usuario");
+            helper.setFrom(this.fromEmail);
+            helper.setTo(to);
+            helper.setText(EmailUtils.getEmailMessage(name, this.host, token));
+
+            // Agregando archivos adjuntos
+            FileSystemResource dog = new FileSystemResource(new File(System.getProperty("user.home") + "/Downloads/dog.jpg"));
+            FileSystemResource programming = new FileSystemResource(new File(System.getProperty("user.home") + "/Downloads/programming.jpg"));
+            FileSystemResource angular = new FileSystemResource(new File(System.getProperty("user.home") + "/Downloads/angular.pdf"));
+
+            helper.addInline(this.getContentId(dog.getFilename()), dog);
+            helper.addInline(this.getContentId(programming.getFilename()), programming);
+            helper.addInline(this.getContentId(angular.getFilename()), angular);
+
+            this.javaMailSender.send(message);
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            throw new RuntimeException("Error SimpleMail: " + e.getMessage());
+        }
+    }
+
+    private String getContentId(String filename) {
+        return "<" + filename + ">";
+    }
+}
+````
+
+Si nos damos cuenta, lo único que estamos cambiando con referencia al método **sendMimeMessageWithAttachments()** son
+los **helper.addAttachment()** por **helper.addInline()**. Como primer parámetro el **addInline()** requiere un
+**contentId** que debe tener el formato ``<contentId>``, es por eso que creamos el método **getContentId()**.
+
+Listo, iniciamos la aplicación y nos registramos. Esta vez lo haré enviando a un correo de gmail y de outlook para ver
+cómo se ven en ambos servicios de correo:
+
+GMAIL
+
+![archivos-inline-1.0.png](./assets/archivos-inline-1.0.png)
+
+OUTLOOK
+
+![archivos-inline-1.1.png](./assets/archivos-inline-1.1.png)
+
+Como vemos, el resultado es similar a la forma del envío de correos adjuntando archivos. Pero podemos notar una
+diferencia, aquí no se muestra el nombre de los archivos. En **gmail** nos muestra **noname** mientras que en
+**Outlook** nos muestra un código **ATT00003.pdf**. Si se mandan archivos, por ejemplo en Word, se muestra un
+comportamiento extraño, como que no deja abrir (según se vio en el tutorial), mientras que si eso mismo se manda
+utilizando el método de los **addAttachment()** sí se muestra correctamente.

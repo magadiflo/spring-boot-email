@@ -34,6 +34,8 @@ public class UserServiceImpl implements IUserService {
         // Enviando email a usuarios de forma asíncrona
         //this.emailService.sendSimpleMailMessage(user.getName(), user.getEmail(), confirmation.getToken());
         this.emailService.sendMimeMessageWithAttachments(user.getName(), user.getEmail(), confirmation.getToken());
+        //this.emailService.sendMimeMessageWithEmbeddedImages(user.getName(), user.getEmail(), confirmation.getToken());
+
 
         return user;
     }

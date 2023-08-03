@@ -72,14 +72,30 @@ public class EmailServiceImpl implements IEmailService {
 
     @Override
     @Async
-    public void sendMimeMessageWithEmbeddedImages(String name, String to, String token) {
-
-    }
-
-    @Override
-    @Async
     public void sendMimeMessageWithEmbeddedFiles(String name, String to, String token) {
+        try {
+            MimeMessage message = this.getMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setPriority(1);
+            helper.setSubject("Verificación de cuenta de nuevo usuario");
+            helper.setFrom(this.fromEmail);
+            helper.setTo(to);
+            helper.setText(EmailUtils.getEmailMessage(name, this.host, token));
 
+            // Agregando archivos adjuntos
+            FileSystemResource dog = new FileSystemResource(new File(System.getProperty("user.home") + "/Downloads/dog.jpg"));
+            FileSystemResource programming = new FileSystemResource(new File(System.getProperty("user.home") + "/Downloads/programming.jpg"));
+            FileSystemResource angular = new FileSystemResource(new File(System.getProperty("user.home") + "/Downloads/angular.pdf"));
+
+            helper.addInline(this.getContentId(dog.getFilename()), dog);
+            helper.addInline(this.getContentId(programming.getFilename()), programming);
+            helper.addInline(this.getContentId(angular.getFilename()), angular);
+
+            this.javaMailSender.send(message);
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            throw new RuntimeException("Error SimpleMail: " + e.getMessage());
+        }
     }
 
     @Override
@@ -96,5 +112,9 @@ public class EmailServiceImpl implements IEmailService {
 
     private MimeMessage getMimeMessage() {
         return this.javaMailSender.createMimeMessage();
+    }
+
+    private String getContentId(String filename) {
+        return "<" + filename + ">";
     }
 }
