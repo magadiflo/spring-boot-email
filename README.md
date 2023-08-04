@@ -669,3 +669,1023 @@ Ahora, revisamos la base de datos para observar los resultados obtenidos:
 Y por si quisiéramos ver la asociación generada en la base de datos:
 
 ![asociacion-users-confirmations.png](./assets/asociacion-users-confirmations.png)
+
+---
+
+# Email
+
+## Creando contraseña de aplicación Gmail
+
+Utilizaremos nuestro correo de Gmail para poder hacer el envío de correos, pero para no colocar nuestra contraseña real
+necesitamos crear una **contraseña de aplicación**.
+
+> Los pasos de la creación de una **Contraseña de Aplicación** para un correo de Gmail se encuentran en el siguiente
+> enlace [Iniciar sesión con contraseñas de aplicación](https://support.google.com/accounts/answer/185833?hl=es). De
+> todas maneras la colocaré aquí también:
+>
+> 1. Ve a tu [**cuenta de Google**](https://myaccount.google.com/).
+> 2. Selecciona **Seguridad.**
+> 3. En "Iniciar sesión en Google", selecciona **Verificación en dos pasos.**
+> 4. En la parte inferior de la página, selecciona **Contraseñas de aplicaciones.**
+> 5. En el select **seleccionar aplicación** elige **otra (nombre personalizado)** e introduce un nombre que te ayude a
+     recordar dónde vas a utilizar la contraseña de aplicación.
+> 6. Selecciona **Generar.**
+> 7. Se mostrará la contraseña de aplicación generada de 16 caracteres, copiarla y no compartirla con nadie. Esta será
+     la contraseña que usemos para enviar los correos desde nuestra aplicación de Spring Boot.
+> 8. Selecciona **Hecho.**
+
+## Configuración de Email
+
+En nuestros archivos de configuración definiremos las siguientes variables relacionadas con nuestro servidor de correo
+Gmail. Es importante precisar que estas variables de configuración los agregaremos a los distintos ambientes:
+**application-dev.yml, application-test.yml, application-prod.yml** y dependiendo del ambiente a trabajar definiremos
+sus valores. En nuestro caso, el mismo valor para todos, pero cuando se trabaje en un ambiente real, debemos cambiar
+los valores por los que se usen en dicho ambiente:
+
+````yaml
+## Other properties
+
+## Email Config
+EMAIL_HOST: smtp.gmail.com
+EMAIL_PORT: 587
+EMAIL_ID: magadiflo@gmail.com
+EMAIL_PASSWORD: qdonjimehiaemcku
+VERIFY_EMAIL_HOST: http://localhost:${SERVER_PORT}
+````
+
+Ahora configuraremos el archivo de propiedad principal **application.yml (perfil default):**
+
+````yaml
+## Other properties
+
+spring:
+  # profiles
+  # datasource
+  # jpa
+
+  mail:
+    host: ${EMAIL_HOST}
+    port: ${EMAIL_PORT}
+    username: ${EMAIL_ID}
+    password: ${EMAIL_PASSWORD}
+    default-encoding: UTF-8
+    properties:
+      mail:
+        mime:
+          charset: UTF
+        smtp:
+          writetimeout: 10000       #10s ó 10000 ms
+          connectiontimeout: 10000  #10s ó 10000 ms
+          timeout: 10000            #10s ó 10000 ms
+          auth: true
+          starttls:
+            enable: true
+            required: true
+    # Configuración propia personalizada
+    verify:
+      host: ${VERIFY_EMAIL_HOST}
+
+````
+
+La configuración anterior hace **uso de las variables que definimos en los perfiles de configuración** para configurar
+todo lo relacionado con el servidor de mail que usaremos (Gmail).
+
+La siguiente configuración extraída de la configuración anterior, **es personalizada, no es propia de spring.mail**,
+pero nosotros podemos agregarlo sin problemas, nuestra configuración personalizada se vería de la siguiente manera
+si usáramos la extensión .properties: ``spring.mail.verify.host = ${VERIFY_EMAIL_HOST}``, **es nuestra configuración
+propia que posteriormente la usaremos dentro de la aplicación.**
+
+````yml
+spring:
+  mail:
+    # Configuración propia personalizada
+    verify:
+      host: ${VERIFY_EMAIL_HOST}
+````
+
+**NOTA**
+
+> La configuración del servidor de correo también la podemos hacer usando una clase de java y utilizando las variables
+> definidas en los archivos de configuración yml, pero según el tutor, es mejor utilizar el archivo de configuración.
+
+## Email Service Interface
+
+Creamos una interfaz que contendrá los métodos que abarcarán los escenarios posibles al enviar correos:
+
+````java
+public interface IEmailService {
+    void sendSimpleMailMessage(String name, String to, String token);
+
+    void sendMimeMessageWithAttachments(String name, String to, String token);
+
+    void sendMimeMessageWithEmbeddedImages(String name, String to, String token);
+
+    void sendMimeMessageWithEmbeddedFiles(String name, String to, String token);
+
+    void sendHtmlEmail(String name, String to, String token);
+
+    void sendHtmlEmailWithEmbeddedFiles(String name, String to, String token);
+}
+````
+
+## Implementando el envío de email de texto simple
+
+Creamos la clase de implementación de la interfaz creada anteriormente e implementamos de momento el primer método para
+poder enviar un correo con texto simple:
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class EmailServiceImpl implements IEmailService {
+
+    private final JavaMailSender javaMailSender;
+
+    @Value("${spring.mail.verify.host}")
+    private String host;
+    @Value("${spring.mail.username}")
+    private String fromEmail;
+
+    @Override
+    public void sendSimpleMailMessage(String name, String to, String token) {
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setSubject("Verificación de cuenta de nuevo usuario");
+            message.setFrom(this.fromEmail);
+            message.setTo(to);
+            message.setText("Hola, la vicuña es del Perú. El token que se te generó es: " + token);
+
+            this.javaMailSender.send(message);
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            throw new RuntimeException("Error SimpleMail: " + e.getMessage());
+        }
+    }
+
+    /* other methods without implementation */
+}
+````
+
+## Enviando email simple al registrar nuevo usuario
+
+Luego de registrar a un usuario, le enviaremos un correo simple utilizando el método **sendSimpleMailMessage()** que
+implementamos en la sección anterior.
+
+En nuestro servicio **UserServiceImpl** debemos inyectar el servicio del email, para eso utilizamos la interfaz
+**IEmailService** que en tiempo de ejecución tomará el valor de su implementación **EmailServiceImpl**. Dentro del
+método **saveUser()** utilizamos **los datos del usuario registrado** y de la confirmación para hacer el envío del
+correo:
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class UserServiceImpl implements IUserService {
+
+    /* other injected services */
+    private final IEmailService emailService;
+
+    @Override
+    @Transactional
+    public User saveUser(User user) {
+        /* other code */
+        this.userRepository.save(user);
+
+        Confirmation confirmation = new Confirmation(user);
+        this.confirmationRepository.save(confirmation);
+
+        // TODO enviar email a usuario con token
+        this.emailService.sendSimpleMailMessage(user.getName(), user.getEmail(), confirmation.getToken());
+
+        return user;
+    }
+
+    /* other method */
+}
+````
+
+Levantamos la aplicación y realizamos una petición al endpoint para poder registrar un usuario:
+
+````bash
+curl -v -X POST -H "Content-Type: application/json" -d "{\"name\": \"Martín Díaz\", \"email\": \"magadiflo@gmail.com\", \"password\": \"12345\"}" http://localhost:8081/api/v1/users | jq
+
+--- Response
+HTTP/1.1 201
+{
+  "timeStamp": "2023-07-31T20:13:22.257878400",
+  "statusCode": 201,
+  "status": "CREATED",
+  "message": "Usuario creado",
+  "data": {
+    "user": {
+      "id": 302,
+      "name": "Martín Díaz",
+      "email": "magadiflo@gmail.com",
+      "password": "12345",
+      "enabled": false
+    }
+  }
+}
+````
+
+Finalmente, revisamos el correo y verificamos que nos haya llegado el email:
+
+![email-simple.png](./assets/email-simple.png)
+
+## Email Utilities
+
+Crearemos un nuevo package llamado **utils** donde agregaremos una clase de utilidad para la implementación de nuestro
+servicio de email. Esta clase tendrá dos **métodos que podrán ser reutilizados, esa será su finalidad:**
+
+````java
+public class EmailUtils {
+    public static String getEmailMessage(String name, String host, String token) {
+        return "(Perú Vicuña) Hola " + name + ",\n\n" +
+                "Tu nueva cuenta ha sido creada. " +
+                "Por favor, haga clic en el enlace de abajo para verificar su cuenta" + "\n\n" +
+                getVerificationUrl(host, token);
+    }
+
+    public static String getVerificationUrl(String host, String token) {
+        return String.format("%s/api/v1/users?token=%s", host, token);
+    }
+}
+````
+
+En nuestra clase de implementación **EmailServiceImpl** utilizamos la clase de utilidad para poder generar el cuerpo del
+mensaje de nuestro correo a enviar:
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class EmailServiceImpl implements IEmailService {
+    /*other code*/
+    @Override
+    public void sendSimpleMailMessage(String name, String to, String token) {
+        try {
+            /*other code*/
+            message.setText(EmailUtils.getEmailMessage(name, this.host, token)); //<-- Generando cuerpo del mensaje con nuestra clase de utilidad
+            /*other code*/
+        } catch (Exception e) {/*other code*/}
+    }
+}
+````
+
+Listo, ahora volvemos a ejecutar nuestra aplicación, y realizamos la petición para registrar un usuario:
+
+````bash
+curl -v -X POST -H "Content-Type: application/json" -d "{\"name\": \"Martín Díaz\", \"email\": \"magadiflo@gmail.com\", \"password\": \"12345\"}" http://localhost:8081/api/v1/users | jq
+
+--- Response
+HTTP/1.1 201
+{
+  "timeStamp": "2023-08-01T16:45:11.553094",
+  "statusCode": 201,
+  "status": "CREATED",
+  "message": "Usuario creado",
+  "data": {
+    "user": {
+      "id": 352,
+      "name": "Martín Díaz",
+      "email": "magadiflo@gmail.com",
+      "password": "12345",
+      "enabled": false
+    }
+  }
+}
+````
+
+Verificamos que nos haya llegado el correo:
+
+![verificacion-1.0](./assets/verificacion-1.0.png)
+
+Verificamos que tengamos el usuario y su confirmación registrados en la base de datos, **pero en la columna
+is_enabled debe estar en falso**, esperando que el usuario haga la verificación de su cuenta:
+
+![verificacion-1.1](./assets/verificacion-1.1.png)
+
+Ahora, **hacemos clic en el enlace proporcionado en el correo de verificación**, esto nos llevará a la siguiente página
+con la obtención del siguiente resultado:
+
+![verificacion-1.2](./assets/verificacion-1.2.png)
+
+El resultado anterior muestra el funcionamiento de nuestro endpoint ``/api/v1/users`` que está esperando recibir un
+parámetro llamado ``token``, ese endpoint corresponde al método handler **confirmUserAccount()** de nuestro rest
+controller **UserResource**.
+
+Entonces, cuando se hizo clic en el enlace de verificación se puso en funcionamiento el endpoint para verificar la
+cuenta del usuario, eso significa que **nuestra base de datos también fue modificada** cambiando el valor de la columna
+**is_enabled** en **true** y eliminando todo el registro del token de la tabla **confirmations**:
+
+![verificacion-1.3](./assets/verificacion-1.3.png)
+
+## Experimentando demora al registrar un usuario
+
+Veamos lo que ocurre cuando realizamos una petición al endpoint para registrar un usuario, sabemos que luego de que nos
+registre en la base de datos, enviará un correo de verificación:
+
+![respuesta](./assets/respuesta-1.0.png)
+
+En la imagen anterior observamos que se está realizando la petición el endpoint de registro de usuario
+**tomándole APROXIMADAMENTE 5 SEGUNDOS en obtener la respuesta** que se muestra en la imagen inferior:
+
+![respuesta](./assets/respuesta-1.1.png)
+
+Lo que está pasando es lo siguiente, luego de que el cliente hace la petición al endpoint de registro de usuario, este
+se mapea al método handler **createUser()**, este método llama al método **saveUser()** del servicio
+**UserServiceImpl**. Veamos lo que contiene el método **saveUser()**:
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class UserServiceImpl implements IUserService {
+    @Override
+    @Transactional
+    public User saveUser(User user) {
+        if (this.userRepository.existsByEmail(user.getEmail())) {
+            throw new RuntimeException(String.format("El email %s ya existe", user.getEmail()));
+        }
+
+        user.setEnabled(false);
+        this.userRepository.save(user);                             // (1)
+
+        Confirmation confirmation = new Confirmation(user);
+        this.confirmationRepository.save(confirmation);             // (2)
+
+        // TODO enviar email a usuario con token
+        this.emailService.sendSimpleMailMessage(user.getName(), user.getEmail(), confirmation.getToken()); // (3)
+
+        return user;    // (4)
+    }
+}
+````
+
+En el código anterior observamos que **el (1) user y el (2) confirmation se registran de manera casi instantánea** en la
+base de datos, pero **cuando llega a la línea donde está el método (3) sendSimpleMailMessage()** es donde se experimenta
+la demora, pues ese método se encarga de enviar el correo, y **mientras no termine su ejecución, el usuario ya
+registrado aún no se devolverá al cliente (4).**
+
+Para mejorar el comportamiento anterior, **haremos que los métodos de envío de correo sean asíncronos**, es decir,
+**trabajen en un hilo separado del hilo que se creó con la solicitud**. Para eso utilizaremos la anotación:
+**@Async**, la cual nos **permitirá procesar y ejecutar otros métodos en un nuevo thread.** Es decir, no vamos a tener
+que esperar por la ejecución de la otra parte de nuestro código.
+
+### [@Async](https://www.baeldung.com/spring-async)
+
+El uso de @Async nos va a proporcionar y permitir la ejecución asíncrona en Spring, la cual es una técnica de
+programación que permite el **procesamiento paralelo y separar la carga de trabajo del thread principal** creando nuevos
+threads worker.
+
+**Anotar un método de un "bean" con @Async hará que se ejecute en un hilo separado.** En otras palabras, la persona que
+llama no esperará a que se complete el método llamado.
+
+Repasemos las reglas. @Async tiene dos limitaciones:
+
+- Debe aplicarse únicamente a métodos públicos.
+- La auto-invocación (llamar al método asíncrono desde dentro de la misma clase) no funcionará.
+
+Las razones son simples: el método debe ser público para que pueda ser redireccionado. Y la autoinvocación no funciona
+porque omite el proxy y llama directamente al método subyacente.
+
+### [@EnableAsync](https://www.baeldung.com/spring-async)
+
+La anotación **@EnableAsync** nos permitirá **habilitar el procesamiento asíncrono** con la **configuración de java**.
+Haremos esto agregando el **@EnableAsync a una clase de configuración:**
+
+````java
+
+@Configuration
+@EnableAsync
+public class SpringAsyncConfig {
+    /*...*/
+}
+````
+
+### [Métodos con tipo de retorno void](https://www.baeldung.com/spring-async)
+
+Una de las formas de hacer **uso de @Async es invocando a un método que devolverá void**, de esta manera no esperamos
+ningún resultado y el hilo principal no esperará resultado del worker thread.
+
+Esta es la forma sencilla de configurar un método con tipo de retorno void para que se ejecute de forma asincrónica:
+
+````java
+
+@Component
+public class AsyncComponent {
+    @Async
+    public void asyncMethodWithVoidReturnType() {
+        System.out.println("Ejecutar método de forma asíncrona. " + Thread.currentThread().getName());
+    }
+}
+````
+
+### [Manejo de excepciones](https://www.baeldung.com/spring-async)
+
+Cuando el tipo de retorno de un método es un **Future<>**, el manejo de excepciones es fácil. El método Future.get()
+producirá la excepción.
+
+Pero **si el tipo de retorno es void, las excepciones no se propagarán al subproceso de llamada.** Por lo tanto,
+necesitamos agregar configuraciones adicionales para manejar las excepciones.
+
+Crearemos un controlador de excepciones asincrónico personalizado implementando la interfaz
+**AsyncUncaughtExceptionHandler**. El método **handleUncaughtException()** se invoca cuando hay excepciones asincrónicas
+no detectadas:
+
+````java
+public class CustomAsyncExceptionHandler implements AsyncUncaughtExceptionHandler {
+    @Override
+    public void handleUncaughtException(Throwable throwable, Method method, Object... obj) {
+
+        System.out.println("Exception message - " + throwable.getMessage());
+        System.out.println("Method name - " + method.getName());
+        for (Object param : obj) {
+            System.out.println("Parameter value - " + param);
+        }
+    }
+}
+````
+
+En el siguiente fragmento de código, observamos la interfaz AsyncConfigurer implementada por la clase de configuración.
+Como parte de eso, también **necesitamos reemplazar el método getAsyncUncaughtExceptionHandler() para devolver nuestro
+controlador de excepciones asincrónico personalizado:**
+
+````java
+
+@Configuration
+@EnableAsync
+public class SpringAsyncConfig implements AsyncConfigurer {
+    @Override
+    public AsyncUncaughtExceptionHandler getAsyncUncaughtExceptionHandler() {
+        return new CustomAsyncExceptionHandler();
+    }
+}
+````
+
+**NOTA**
+> **No confundir una aplicación asíncrona con una aplicación reactiva.**
+
+## Mejorando el envío de email al registrar un nuevo usuario
+
+En la sección anterior vimos el problema y cómo el uso de la anotación **@Async** nos ayuda a resolverlo. En esta
+sección procederemos a su implementación.
+
+Lo primero que realizaremos será crear una clase de configuración donde **habilitaremos el uso de la anotación @Async**.
+``En el tutorial que sigo, el tutor habilita el uso de la anotación @Async en la clase principal`` sin crear ninguna
+clase adicional. En mi caso, sí creo una clase de configuración, ya que revisando la web de **baeldung**, crean esta
+clase de configuración para manejar las excepciónes en los métodos asíncronos.
+
+````java
+
+@EnableAsync //<-- Habilitamos el uso de la anotación @Async (soporte para métodos asíncronos)
+@Configuration
+public class SpringAsyncConfig {
+
+}
+````
+
+Como segundo paso, es anotar los métodos void con **@Async**, en mi caso, anotaré todos los métodos que enviarán correo.
+**Cada vez que un método anotado con @Async sea invocado se creará un nuevo Thread.**
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class EmailServiceImpl implements IEmailService {
+
+    /*other code*/
+
+    @Override
+    @Async //<-- Anotación que marca un método como candidato para ejecución asíncrona.
+    public void sendSimpleMailMessage(String name, String to, String token) {
+        /* other code */
+    }
+
+    @Override
+    @Async  //<--
+    public void sendMimeMessageWithAttachments(String name, String to, String token) {
+    }
+
+    @Override
+    @Async  //<--
+    public void sendMimeMessageWithEmbeddedImages(String name, String to, String token) {
+    }
+
+    @Override
+    @Async  //<--
+    public void sendMimeMessageWithEmbeddedFiles(String name, String to, String token) {
+    }
+
+    @Override
+    @Async  //<--
+    public void sendHtmlEmail(String name, String to, String token) {
+    }
+
+    @Override
+    @Async  //<--
+    public void sendHtmlEmailWithEmbeddedFiles(String name, String to, String token) {
+    }
+}
+````
+
+Listo, ahora realizamos la petición nuevamente y veremos que **ya no se demora en retornar la respuesta, es casi de
+inmediato.**
+
+![respuesta](./assets/respuesta-1.2.png)
+
+## Manejo de excepciones en los métodos anotados con @Async
+
+**Este apartado no es parte del tutorial,** pero lo quise tratar por si en algún momento requiero implementar
+validaciones a los métodos asíncronos. Antes de ver la implementación realizada, debemos conocer algunas definiciones
+de las interfaces y métodos que usaremos:
+
+### AsyncUncaughtExceptionHandler
+
+Una estrategia para manejar excepciones no detectadas lanzadas desde métodos asincrónicos.
+
+**Un método asíncrono generalmente devuelve una instancia java.util.concurrent.Future** que brinda acceso a la excepción
+subyacente. **Cuando el método no proporciona ese tipo de valor devuelto**, este controlador se puede usar para
+administrar tales **excepciones no detectadas.**
+
+### handleUncaughtException()
+
+Recibe parámetros de la excepción no detectada que fue lanzada desde un método asíncrono:
+
+- ex – la excepción lanzada por el método asíncrono method
+- method - el método asíncrono
+- params - los parámetros usados para invocar el método
+
+### AsyncConfigurer
+
+Interfaz que implementarán las clases de @Configuration anotadas con @EnableAsync que deseen personalizar la instancia
+de **Executor** utilizada al procesar invocaciones de métodos asincrónicos o la instancia
+**AsyncUncaughtExceptionHandler** utilizada para procesar la excepción lanzada desde el método asincrónico con
+**tipo de retorno void.**
+
+## Implementando el manejo de excepciones en los métodos anotados con @Async
+
+Ahora, vamos de lleno a implementar el manejo de excepciones. Primero crearemos un controlador de excepciones asíncrono
+personalizado implementando la interfaz **AsyncUncaughtExceptionHandler**:
+
+````java
+public class CustomAsyncExceptionHandler implements AsyncUncaughtExceptionHandler {
+    @Override
+    public void handleUncaughtException(Throwable ex, Method method, Object... params) {
+        System.out.println("Mensaje de excepción: " + ex.getMessage());
+        System.out.println("Nombre del método: " + method.getName());
+        for (Object param : params) {
+            System.out.println("Valor del parámetro: " + param);
+        }
+    }
+}
+````
+
+En nuestra clase de configuración que ya habíamos creado en capítulos anteriores implementaremos la interfaz
+**AsyncConfigurer** y sobreescribiremos su método **getAsyncUncaughtExceptionHandler()** para retornar la clase de
+configuración creada anteriormente:
+
+````java
+
+@EnableAsync
+@Configuration
+public class SpringAsyncConfig implements AsyncConfigurer {
+
+    @Override
+    public AsyncUncaughtExceptionHandler getAsyncUncaughtExceptionHandler() {
+        return new CustomAsyncExceptionHandler();
+    }
+}
+````
+
+Listo, ahora ejecutamos la aplicación y realicemos una petición registrando un usuario, pero para observar el manejo
+de la excepción **nos desconectaremos de internet** y veremos el comportamiento:
+
+````bash
+Mail server connection failed. Failed messages: com.sun.mail.util.MailConnectException: Couldn't connect to host, port: smtp.gmail.com, 587; timeout 10000;
+  nested exception is:
+	java.net.NoRouteToHostException: No route to host: no further information
+Mensaje de excepción: Error SimpleMail: Mail server connection failed. Failed messages: com.sun.mail.util.MailConnectException: Couldn't connect to host, port: smtp.gmail.com, 587; timeout 10000;
+  nested exception is:
+	java.net.NoRouteToHostException: No route to host: no further information
+Nombre del método: sendSimpleMailMessage
+Valor del parámetro: Martín Díaz
+Valor del parámetro: magadiflo@gmail.com
+Valor del parámetro: 48f891c0-353e-481c-8423-4a6ae633217b
+````
+
+Como observamos, nuestro método **handleUncaughtException(...)** está mostrando las impresiones que definimos. Vemos que
+el envío del correo no pudo efectuarse, eso podría ser registrado en el log. Pero, **si revisamos la base de datos, allí
+sí tenemos registrado al usuario.**
+
+## Importancia de manejar excepciones en métodos anotados con @Async
+
+1. **Registros y monitoreo:** Si no se manejan las excepciones adecuadamente, es posible que las excepciones ocurridas
+   en los métodos asíncronos no sean reportadas o registradas correctamente. Esto podría dificultar la identificación y
+   solución de problemas en el sistema.
+
+2. **Comportamiento inesperado:** Si una excepción no es manejada en un método asíncrono, el hilo de ejecución del
+   método terminará abruptamente, lo que puede resultar en un comportamiento inesperado del programa o incluso en la
+   pérdida de información importante.
+
+3. **Procesos en segundo plano:** Los métodos asíncronos suelen utilizarse para realizar tareas en segundo plano, como
+   enviar correos electrónicos, procesar tareas largas o ejecutar trabajos programados. Si no se manejan las excepciones
+   adecuadamente, estas tareas en segundo plano podrían quedar incompletas o fallar silenciosamente.
+
+4. **Salud del sistema:** Un fallo no manejado en un método asíncrono podría impactar negativamente en la salud general
+   del sistema, especialmente si los errores no se reportan ni manejan adecuadamente.
+
+## Enviando email con archivos adjuntos
+
+En nuestra clase **EmailServiceImpl** implementamos el método **sendMimeMessageWithAttachments()** con el que enviaremos
+archivos adjuntos. Además, debemos crear un método que nos retorne un **MimeMessage**, que **representa un mensaje de
+correo electrónico de estilo MIME,** crearemos ese método para poder reutilizarlo. Veamos la implemetación realizada:
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class EmailServiceImpl implements IEmailService {
+    /* other code */
+    @Override
+    @Async
+    public void sendMimeMessageWithAttachments(String name, String to, String token) {
+        try {
+            MimeMessage message = this.getMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setPriority(1); //Establece la prioridad (encabezado "X-Priority") del mensaje. Entre 1(más alto) y 5 (más bajo)
+            helper.setSubject("Verificación de cuenta de nuevo usuario");
+            helper.setFrom(this.fromEmail);
+            helper.setTo(to);
+            helper.setText(EmailUtils.getEmailMessage(name, this.host, token));
+
+            // Agregando archivos adjuntos
+            FileSystemResource dog = new FileSystemResource(new File(System.getProperty("user.home") + "/Downloads/dog.jpg"));
+            FileSystemResource programming = new FileSystemResource(new File(System.getProperty("user.home") + "/Downloads/programming.jpg"));
+            FileSystemResource angular = new FileSystemResource(new File(System.getProperty("user.home") + "/Downloads/angular.pdf"));
+
+            helper.addAttachment(dog.getFilename(), dog);
+            helper.addAttachment(programming.getFilename(), programming);
+            helper.addAttachment(angular.getFilename(), angular);
+
+            this.javaMailSender.send(message);
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            throw new RuntimeException("Error SimpleMail: " + e.getMessage());
+        }
+    }
+
+    private MimeMessage getMimeMessage() {
+        return this.javaMailSender.createMimeMessage();
+    }
+}
+````
+
+Como observamos en la implementación anterior, estamos usando la clase **MimeMessageHelper, que es una clase auxiliar
+para completar un MimeMessage.** Refleja los configuradores simples de org.springframework.mail.SimpleMailMessage,
+aplicando directamente los valores al MimeMessage subyacente. Permite definir una codificación de caracteres para todo
+el mensaje, aplicada automáticamente por todos los métodos de esta clase auxiliar. **Ofrece soporte para contenido de
+texto HTML, elementos en línea como imágenes y archivos adjuntos de correo típicos.** También admite nombres personales
+que acompañan a las direcciones de correo.
+
+Para poder agregar los **archivos adjuntos (attachments)** utilizamos la clase **MimeMessageHelper** que utiliza un
+**FileSystemResource de Spring** para poder adjuntar el recurso. En nuestro caso, adjuntaremos tres archivos: dos
+imágenes + un archivo pdf.
+
+Los archivos que se adjuntarán en el correo los coloqué en el directorio de descargas:
+
+````
+C:\Users\USUARIO\Downloads\dog.jpg
+C:\Users\USUARIO\Downloads\programming.jpg
+C:\Users\USUARIO\Downloads\angular.jpg
+````
+
+![archivos-adjuntar-1.0.png](./assets/archivos-adjuntar-1.0.png)
+
+Ahora, en nuestra clase **UserServiceImpl** cambiamos el método **sendSimpleMailMessage()** que usámos anteriormente
+para enviar correos simples, por nuestra nueva implementación:
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class UserServiceImpl implements IUserService {
+    @Override
+    @Transactional
+    public User saveUser(User user) {
+        /* other code*/
+
+        // Enviando email a usuarios de forma asíncrona
+        //this.emailService.sendSimpleMailMessage(user.getName(), user.getEmail(), confirmation.getToken());
+        this.emailService.sendMimeMessageWithAttachments(user.getName(), user.getEmail(), confirmation.getToken());
+
+        return user;
+    }
+}
+````
+
+Listo, ahora ejecutamos la aplicación y comprobaos que se hayan enviado nuestros tres archivos al correo:
+
+![archivos-adjuntar-1.1.png](./assets/archivos-adjuntar-1.1.png)
+
+## Enviando email con archivos embebidos
+
+Implementamos nuestro método **sendMimeMessageWithEmbeddedFiles()** utilizando el método **addInline()**, este método
+nos permite agregar un elemento en línea al MimeMessage, tomando el contenido de un
+org.springframework.core.io.Resource.
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class EmailServiceImpl implements IEmailService {
+    /* other code */
+    @Override
+    @Async
+    public void sendMimeMessageWithEmbeddedFiles(String name, String to, String token) {
+        try {
+            MimeMessage message = this.getMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setPriority(1);
+            helper.setSubject("Verificación de cuenta de nuevo usuario");
+            helper.setFrom(this.fromEmail);
+            helper.setTo(to);
+            helper.setText(EmailUtils.getEmailMessage(name, this.host, token));
+
+            // Agregando archivos adjuntos
+            FileSystemResource dog = new FileSystemResource(new File(System.getProperty("user.home") + "/Downloads/dog.jpg"));
+            FileSystemResource programming = new FileSystemResource(new File(System.getProperty("user.home") + "/Downloads/programming.jpg"));
+            FileSystemResource angular = new FileSystemResource(new File(System.getProperty("user.home") + "/Downloads/angular.pdf"));
+
+            helper.addInline(this.getContentId(dog.getFilename()), dog);
+            helper.addInline(this.getContentId(programming.getFilename()), programming);
+            helper.addInline(this.getContentId(angular.getFilename()), angular);
+
+            this.javaMailSender.send(message);
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            throw new RuntimeException("Error SimpleMail: " + e.getMessage());
+        }
+    }
+
+    private String getContentId(String filename) {
+        return "<" + filename + ">";
+    }
+}
+````
+
+Si nos damos cuenta, lo único que estamos cambiando con referencia al método **sendMimeMessageWithAttachments()** son
+los **helper.addAttachment()** por **helper.addInline()**. Como primer parámetro el **addInline()** requiere un
+**contentId** que debe tener el formato ``<contentId>``, es por eso que creamos el método **getContentId()**.
+
+Listo, iniciamos la aplicación y nos registramos. Esta vez lo haré enviando a un correo de gmail y de outlook para ver
+cómo se ven en ambos servicios de correo:
+
+GMAIL
+
+![archivos-inline-1.0.png](./assets/archivos-inline-1.0.png)
+
+OUTLOOK
+
+![archivos-inline-1.1.png](./assets/archivos-inline-1.1.png)
+
+Como vemos, el resultado es similar a la forma del envío de correos adjuntando archivos. Pero podemos notar una
+diferencia, aquí no se muestra el nombre de los archivos. En **gmail** nos muestra **noname** mientras que en
+**Outlook** nos muestra un código **ATT00003.pdf**. Si se mandan archivos, por ejemplo en Word, se muestra un
+comportamiento extraño, como que no deja abrir (según se vio en el tutorial), mientras que si eso mismo se manda
+utilizando el método de los **addAttachment()** sí se muestra correctamente.
+
+## Enviando correo html
+
+Enviaremos correo electrónico utilizando una plantilla html con soporte de thymeleaf. De esta manera enriquecemos el
+correo que enviaremos. Lo primero que haremos será crear en el directorio **/resources/templates/** una plantilla html
+que personalizaremos agregando datos dinámicamente con la ayuda de Thymeleaf.
+
+``email-confirmation-template.html``
+
+````html
+<p style="font-size: 14px; line-height: 170%;"><span
+        style="font-size: 14px; line-height: 23.8px;"
+        th:text="${currentdate}"></span>
+</p>
+<p style="font-size: 14px; line-height: 160%;"><span
+        style="font-size: 22px; line-height: 35.2px;">Hola, <strong
+        th:text="${name}"></strong></span>
+</p>
+<a th:href="${url}" target="_blank" class="v-button">VERIFICA TU CORREO</a>
+````
+
+En el fragmento anterior observamos parte del html que usamos en la plantilla, gracias **al uso de Thymeleaf es que
+podemos usar variables para poder agregar información a la plantilla de forma dinámica**, hasta el momento estas son las
+variables que usamos junto a las instrucciones de thymeleaf:
+
+````javascript
+th:text="${currentdate}"
+th:text="${name}"
+th:href="${url}" 
+````
+
+Ahora, toca implementar el método que enviará el correo en html:
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class EmailServiceImpl implements IEmailService {
+    /* other code */
+    @Override
+    @Async
+    public void sendHtmlEmail(String name, String to, String token) {
+        try {
+            //------------ (1) Trabajando con html y Thymeleaf ------------------
+            Context context = new Context();
+            context.setVariables(Map.of(
+                    "name", name,
+                    "url", EmailUtils.getVerificationUrl(this.host, token),
+                    "currentdate", LocalDateTime.now())
+            );
+            String text = templateEngine.process("email-confirmation-template", context);
+            //-------------------------------------------------------------------
+
+            MimeMessage message = this.getMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setPriority(1);
+            helper.setSubject("Verificación de cuenta de nuevo usuario");
+            helper.setFrom(this.fromEmail);
+            helper.setTo(to);
+            helper.setText(text, true); //<-- (2) True porque enviaremos texto en formato html
+
+            this.javaMailSender.send(message);
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            throw new RuntimeException("Error SimpleMail: " + e.getMessage());
+        }
+    }
+}
+````
+
+El código anterior es similar a los métodos de correo implementado en secciones anteriores, con la diferencia de que
+en este método no se hace uso de archivos adjuntos. Si observamos bien, tan solo agregamos dos modificaciones:
+
+- **(1)** definimos un contexto de Thymeleaf con el que agregaremos variables que se espera recibir en la plantilla
+  html. Adicionalmente, realizamos una **inyección de dependencia** de la clase **TemplateEngine**. Esta es la clase
+  principal para la ejecución de plantillas. **Esta es la única implementación de ITemplateEngine proporcionada por
+  Thymeleaf.** Entonces, utilizamos el **TemplateEngine** para definir la plantilla html que usaremos, agregándole
+  el contexto al que anteriormente le seteamos las variables.
+- **(2)** al momento de utilizar nuestro **helper** para definir el texto del mensaje, le agregamos un segundo parámetro
+  en true, **para decirle que el content type será "text/html"**, por defecto es "text/plain".
+
+Finalmente en el **UserServiceImpl** cambiamos el método que ahora enviará los correos en html:
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class UserServiceImpl implements IUserService {
+    @Override
+    @Transactional
+    public User saveUser(User user) {
+        /* other code */
+
+        // Enviando email a usuarios de forma asíncrona
+        //this.emailService.sendSimpleMailMessage(user.getName(), user.getEmail(), confirmation.getToken());
+        //this.emailService.sendMimeMessageWithAttachments(user.getName(), user.getEmail(), confirmation.getToken());
+        //this.emailService.sendMimeMessageWithEmbeddedImages(user.getName(), user.getEmail(), confirmation.getToken());
+        this.emailService.sendHtmlEmail(user.getName(), user.getEmail(), confirmation.getToken());
+        return user;
+    }
+}
+````
+
+Listo, observamos el resultado:
+
+![correo-html-1.0](./assets/correo-html-1.0.png)
+
+## Enviar correo html con archivos incrustados
+
+Si quisiéramos incrustar una imagen en la plantilla html de nuestro correo tendríamos que realizar una configuración
+adicional a lo que hemos venido realizando.
+
+Primero, definimos nuestra etiqueta **img** que recibirá la imagen:
+
+````html
+<img src="cid:image" style="width: 100%" alt="imagen">
+````
+
+**DONDE**
+
+- **cid**, significa Content-ID.
+- **image**, nombre de la variable que mandaremos desde el código.
+
+Ahora toca implementar el método que hará el envío del correo incrustando una imagen dentro del html del correo.
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class EmailServiceImpl implements IEmailService {
+    @Override
+    @Async
+    public void sendHtmlEmailWithEmbeddedFiles(String name, String to, String token) {
+        try {
+            MimeMessage message = this.getMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setPriority(1);
+            helper.setSubject("Verificación de cuenta de nuevo usuario");
+            helper.setFrom(this.fromEmail);
+            helper.setTo(to);
+            //helper.setText(text, true); <-- Ya no se enviará de esta forma como en los anteriores métodos.
+
+            Context context = new Context();
+            context.setVariables(Map.of(
+                    "name", name,
+                    "url", EmailUtils.getVerificationUrl(this.host, token),
+                    "currentdate", LocalDateTime.now())
+            );
+            String text = templateEngine.process("email-confirmation-template", context);
+
+            MimeMultipart mimeMultipart = new MimeMultipart("related"); // (1)
+
+            // Agrega el cuerpo del correo html
+            BodyPart messageBodyPart = new MimeBodyPart();
+            messageBodyPart.setContent(text, "text/html");
+            mimeMultipart.addBodyPart(messageBodyPart);
+
+            // Agrega imágen al cuerpo del correo
+            BodyPart imageBodyPart = new MimeBodyPart();
+            DataSource dataSource = new FileDataSource(System.getProperty("user.home") + "/Downloads/dog.jpg");
+            imageBodyPart.setDataHandler(new DataHandler(dataSource));
+            imageBodyPart.setHeader("Content-ID", "image");//En el html <img src="cid:image">
+            mimeMultipart.addBodyPart(imageBodyPart);
+
+            message.setContent(mimeMultipart);
+
+            this.javaMailSender.send(message);
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            throw new RuntimeException("Error SimpleMail: " + e.getMessage());
+        }
+    }
+}
+````
+
+**(1)** hacemos uso de la clase **MimeMultipart** que es una implementación de la clase abstracta **MultiPart** que usa
+convenciones MIME para los datos de varias partes. En el contexto del uso de la clase MimeMultipart con el subtipo "
+related", se refiere a un tipo especial de contenido multipart MIME que **se utiliza para agrupar múltiples partes
+relacionadas, como un mensaje de correo electrónico que incluye imágenes o recursos embebidos.**
+
+Cuando se envía un mensaje de correo electrónico que contiene imágenes o recursos embebidos en el cuerpo del mensaje, es
+necesario asegurarse de que estos recursos estén relacionados correctamente con el contenido principal del mensaje. Aquí
+es donde el subtipo "related" es útil.
+
+Por ejemplo, si deseas enviar un correo electrónico que contenga un mensaje de texto y una imagen embebida en el
+contenido, **usarías el subtipo "related" para agrupar ambas partes.** De esta manera, el cliente de correo electrónico
+receptor sabrá que la imagen está destinada a ser parte del contenido del mensaje y podrá mostrarla correctamente.
+
+Listo, ahora solo falta cambiar en el **UserServiceImple** el método que incrustará la imagen en el html:
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class UserServiceImpl implements IUserService {
+    /* other code */
+    @Override
+    @Transactional
+    public User saveUser(User user) {
+        /* other code */
+        this.emailService.sendHtmlEmailWithEmbeddedFiles(user.getName(), user.getEmail(), confirmation.getToken());
+
+        return user;
+    }
+}
+````
+
+Finalmente, ejecutamos la aplicación y observamos que el correo recibido ya contiene nuestra imagen incrustada en el
+html:
+
+![imagen-embebido-1.0.png](./assets/imagen-embebido-1.0.png)
+
+## Solución a caracteres especiales en correo con imagen embebido
+
+En la sección anterior implementamos el envío de correo incrustando en nuestra plantilla html una imagen. Esa acción nos
+obligó a modificar la forma cómo estábamos construyendo los correos. Es decir, ahora no solo usamos el
+**MimeMessageHelpter** sino también otras clases como el **MimeMultipart, MimeBodyPart, etc.** Al finalizar la
+implementación enviamos los correos tanto a **Gmail como a Outlook**, en **Gmail** todo funcionó correctamente, pero en
+**Outlook** observamos el siguiente comportamiento:
+
+![caracteres-utf8-1.0.png](./assets/caracteres-utf8-1.0.png)
+
+Los caracteres especiales como las tildes no se están mostrando correctamente y es que en esta nueva
+forma de enviar el correo de nuestro método **sendHtmlEmailWithEmbeddedFiles()**, se nos olvidó agregar lo siguiente
+en el **setContent()**:
+
+````
+BodyPart messageBodyPart = new MimeBodyPart();
+messageBodyPart.setContent(text, "text/html;charset=utf8"); //<-- Importante agregar el charset=utf8
+````
+
+Listo, luego de haber agregado el **charset=utf8** en el **setContent()** volvemos a ejecuta la aplicación y observamos
+esta vez el resultado en el correo de **Outlook** (que es el que detectó el problema):
+
+![caracteres-utf8-1.1.png](./assets/caracteres-utf8-1.1.png)
