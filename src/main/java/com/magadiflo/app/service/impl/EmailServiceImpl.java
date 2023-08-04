@@ -160,7 +160,7 @@ public class EmailServiceImpl implements IEmailService {
 
             // Agrega el cuerpo del correo html
             BodyPart messageBodyPart = new MimeBodyPart();
-            messageBodyPart.setContent(text, "text/html");
+            messageBodyPart.setContent(text, "text/html;charset=utf8");
             mimeMultipart.addBodyPart(messageBodyPart);
 
             // Agrega imágen al cuerpo del correo

@@ -1666,3 +1666,26 @@ html:
 
 ![imagen-embebido-1.0.png](./assets/imagen-embebido-1.0.png)
 
+## Solución a caracteres especiales en correo con imagen embebido
+
+En la sección anterior implementamos el envío de correo incrustando en nuestra plantilla html una imagen. Esa acción nos
+obligó a modificar la forma cómo estábamos construyendo los correos. Es decir, ahora no solo usamos el
+**MimeMessageHelpter** sino también otras clases como el **MimeMultipart, MimeBodyPart, etc.** Al finalizar la
+implementación enviamos los correos tanto a **Gmail como a Outlook**, en **Gmail** todo funcionó correctamente, pero en
+**Outlook** observamos el siguiente comportamiento:
+
+![caracteres-utf8-1.0.png](./assets/caracteres-utf8-1.0.png)
+
+Los caracteres especiales como las tildes no se están mostrando correctamente y es que en esta nueva
+forma de enviar el correo de nuestro método **sendHtmlEmailWithEmbeddedFiles()**, se nos olvidó agregar lo siguiente
+en el **setContent()**:
+
+````
+BodyPart messageBodyPart = new MimeBodyPart();
+messageBodyPart.setContent(text, "text/html;charset=utf8"); //<-- Importante agregar el charset=utf8
+````
+
+Listo, luego de haber agregado el **charset=utf8** en el **setContent()** volvemos a ejecuta la aplicación y observamos
+esta vez el resultado en el correo de **Outlook** (que es el que detectó el problema):
+
+![caracteres-utf8-1.1.png](./assets/caracteres-utf8-1.1.png)
