@@ -11,14 +11,19 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.thymeleaf.TemplateEngine;
+import org.thymeleaf.context.Context;
 
 import java.io.File;
+import java.time.LocalDateTime;
+import java.util.Map;
 
 @RequiredArgsConstructor
 @Service
 public class EmailServiceImpl implements IEmailService {
 
     private final JavaMailSender javaMailSender;
+    private final TemplateEngine templateEngine;
 
     @Value("${spring.mail.verify.host}")
     private String host;
@@ -101,7 +106,28 @@ public class EmailServiceImpl implements IEmailService {
     @Override
     @Async
     public void sendHtmlEmail(String name, String to, String token) {
+        try {
+            Context context = new Context();
+            context.setVariables(Map.of(
+                    "name", name,
+                    "url", EmailUtils.getVerificationUrl(this.host, token),
+                    "currentdate", LocalDateTime.now())
+            );
+            String text = templateEngine.process("email-confirmation-template", context);
 
+            MimeMessage message = this.getMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setPriority(1);
+            helper.setSubject("Verificación de cuenta de nuevo usuario");
+            helper.setFrom(this.fromEmail);
+            helper.setTo(to);
+            helper.setText(text, true);
+
+            this.javaMailSender.send(message);
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            throw new RuntimeException("Error SimpleMail: " + e.getMessage());
+        }
     }
 
     @Override

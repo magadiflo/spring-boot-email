@@ -1454,3 +1454,110 @@ diferencia, aquí no se muestra el nombre de los archivos. En **gmail** nos mues
 **Outlook** nos muestra un código **ATT00003.pdf**. Si se mandan archivos, por ejemplo en Word, se muestra un
 comportamiento extraño, como que no deja abrir (según se vio en el tutorial), mientras que si eso mismo se manda
 utilizando el método de los **addAttachment()** sí se muestra correctamente.
+
+## Enviando correo html
+
+Enviaremos correo electrónico utilizando una plantilla html con soporte de thymeleaf. De esta manera enriquecemos el
+correo que enviaremos. Lo primero que haremos será crear en el directorio **/resources/templates/** una plantilla html
+que personalizaremos agregando datos dinámicamente con la ayuda de Thymeleaf.
+
+``email-confirmation-template.html``
+
+````html
+<p style="font-size: 14px; line-height: 170%;"><span
+        style="font-size: 14px; line-height: 23.8px;"
+        th:text="${currentdate}"></span>
+</p>
+<p style="font-size: 14px; line-height: 160%;"><span
+        style="font-size: 22px; line-height: 35.2px;">Hola, <strong
+        th:text="${name}"></strong></span>
+</p>
+<a th:href="${url}" target="_blank" class="v-button">VERIFICA TU CORREO</a>
+````
+
+En el fragmento anterior observamos parte del html que usamos en la plantilla, gracias **al uso de Thymeleaf es que
+podemos usar variables para poder agregar información a la plantilla de forma dinámica**, hasta el momento estas son las
+variables que usamos junto a las instrucciones de thymeleaf:
+
+````javascript
+th:text="${currentdate}"
+th:text="${name}"
+th:href="${url}" 
+````
+
+Ahora, toca implementar el método que enviará el correo en html:
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class EmailServiceImpl implements IEmailService {
+    /* other code */
+    @Override
+    @Async
+    public void sendHtmlEmail(String name, String to, String token) {
+        try {
+            //------------ (1) Trabajando con html y Thymeleaf ------------------
+            Context context = new Context();
+            context.setVariables(Map.of(
+                    "name", name,
+                    "url", EmailUtils.getVerificationUrl(this.host, token),
+                    "currentdate", LocalDateTime.now())
+            );
+            String text = templateEngine.process("email-confirmation-template", context);
+            //-------------------------------------------------------------------
+
+            MimeMessage message = this.getMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setPriority(1);
+            helper.setSubject("Verificación de cuenta de nuevo usuario");
+            helper.setFrom(this.fromEmail);
+            helper.setTo(to);
+            helper.setText(text, true); //<-- (2) True porque enviaremos texto en formato html
+
+            this.javaMailSender.send(message);
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            throw new RuntimeException("Error SimpleMail: " + e.getMessage());
+        }
+    }
+}
+````
+
+El código anterior es similar a los métodos de correo implementado en secciones anteriores, con la diferencia de que
+en este método no se hace uso de archivos adjuntos. Si observamos bien, tan solo agregamos dos modificaciones:
+
+- **(1)** definimos un contexto de Thymeleaf con el que agregaremos variables que se espera recibir en la plantilla
+  html. Adicionalmente, realizamos una **inyección de dependencia** de la clase **TemplateEngine**. Esta es la clase
+  principal para la ejecución de plantillas. **Esta es la única implementación de ITemplateEngine proporcionada por
+  Thymeleaf.** Entonces, utilizamos el **TemplateEngine** para definir la plantilla html que usaremos, agregándole
+  el contexto al que anteriormente le seteamos las variables.
+- **(2)** al momento de utilizar nuestro **helper** para definir el texto del mensaje, le agregamos un segundo parámetro
+  en true, **para decirle que el content type será "text/html"**, por defecto es "text/plain".
+
+Finalmente en el **UserServiceImpl** cambiamos el método que ahora enviará los correos en html:
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class UserServiceImpl implements IUserService {
+    @Override
+    @Transactional
+    public User saveUser(User user) {
+        /* other code */
+
+        // Enviando email a usuarios de forma asíncrona
+        //this.emailService.sendSimpleMailMessage(user.getName(), user.getEmail(), confirmation.getToken());
+        //this.emailService.sendMimeMessageWithAttachments(user.getName(), user.getEmail(), confirmation.getToken());
+        //this.emailService.sendMimeMessageWithEmbeddedImages(user.getName(), user.getEmail(), confirmation.getToken());
+        this.emailService.sendHtmlEmail(user.getName(), user.getEmail(), confirmation.getToken());
+        return user;
+    }
+}
+````
+
+Listo, observamos el resultado:
+
+![correo-html-1.0](./assets/correo-html-1.0.png)
+
