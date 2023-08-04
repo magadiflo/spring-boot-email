@@ -2,7 +2,13 @@ package com.magadiflo.app.service.impl;
 
 import com.magadiflo.app.service.IEmailService;
 import com.magadiflo.app.utils.EmailUtils;
+import jakarta.activation.DataHandler;
+import jakarta.activation.DataSource;
+import jakarta.activation.FileDataSource;
+import jakarta.mail.BodyPart;
+import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMessage;
+import jakarta.mail.internet.MimeMultipart;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
@@ -133,7 +139,44 @@ public class EmailServiceImpl implements IEmailService {
     @Override
     @Async
     public void sendHtmlEmailWithEmbeddedFiles(String name, String to, String token) {
+        try {
+            MimeMessage message = this.getMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setPriority(1);
+            helper.setSubject("Verificación de cuenta de nuevo usuario");
+            helper.setFrom(this.fromEmail);
+            helper.setTo(to);
+            //helper.setText(text, true); <-- Ya no se enviará de esta forma como en los anteriores métodos.
 
+            Context context = new Context();
+            context.setVariables(Map.of(
+                    "name", name,
+                    "url", EmailUtils.getVerificationUrl(this.host, token),
+                    "currentdate", LocalDateTime.now())
+            );
+            String text = templateEngine.process("email-confirmation-template", context);
+
+            MimeMultipart mimeMultipart = new MimeMultipart("related");
+
+            // Agrega el cuerpo del correo html
+            BodyPart messageBodyPart = new MimeBodyPart();
+            messageBodyPart.setContent(text, "text/html");
+            mimeMultipart.addBodyPart(messageBodyPart);
+
+            // Agrega imágen al cuerpo del correo
+            BodyPart imageBodyPart = new MimeBodyPart();
+            DataSource dataSource = new FileDataSource(System.getProperty("user.home") + "/Downloads/dog.jpg");
+            imageBodyPart.setDataHandler(new DataHandler(dataSource));
+            imageBodyPart.setHeader("Content-ID", "image");//En el html <img src="cid:image">
+            mimeMultipart.addBodyPart(imageBodyPart);
+
+            message.setContent(mimeMultipart);
+
+            this.javaMailSender.send(message);
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            throw new RuntimeException("Error SimpleMail: " + e.getMessage());
+        }
     }
 
     private MimeMessage getMimeMessage() {

@@ -1561,3 +1561,108 @@ Listo, observamos el resultado:
 
 ![correo-html-1.0](./assets/correo-html-1.0.png)
 
+## Enviar correo html con archivos incrustados
+
+Si quisiéramos incrustar una imagen en la plantilla html de nuestro correo tendríamos que realizar una configuración
+adicional a lo que hemos venido realizando.
+
+Primero, definimos nuestra etiqueta **img** que recibirá la imagen:
+
+````html
+<img src="cid:image" style="width: 100%" alt="imagen">
+````
+
+**DONDE**
+
+- **cid**, significa Content-ID.
+- **image**, nombre de la variable que mandaremos desde el código.
+
+Ahora toca implementar el método que hará el envío del correo incrustando una imagen dentro del html del correo.
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class EmailServiceImpl implements IEmailService {
+    @Override
+    @Async
+    public void sendHtmlEmailWithEmbeddedFiles(String name, String to, String token) {
+        try {
+            MimeMessage message = this.getMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setPriority(1);
+            helper.setSubject("Verificación de cuenta de nuevo usuario");
+            helper.setFrom(this.fromEmail);
+            helper.setTo(to);
+            //helper.setText(text, true); <-- Ya no se enviará de esta forma como en los anteriores métodos.
+
+            Context context = new Context();
+            context.setVariables(Map.of(
+                    "name", name,
+                    "url", EmailUtils.getVerificationUrl(this.host, token),
+                    "currentdate", LocalDateTime.now())
+            );
+            String text = templateEngine.process("email-confirmation-template", context);
+
+            MimeMultipart mimeMultipart = new MimeMultipart("related"); // (1)
+
+            // Agrega el cuerpo del correo html
+            BodyPart messageBodyPart = new MimeBodyPart();
+            messageBodyPart.setContent(text, "text/html");
+            mimeMultipart.addBodyPart(messageBodyPart);
+
+            // Agrega imágen al cuerpo del correo
+            BodyPart imageBodyPart = new MimeBodyPart();
+            DataSource dataSource = new FileDataSource(System.getProperty("user.home") + "/Downloads/dog.jpg");
+            imageBodyPart.setDataHandler(new DataHandler(dataSource));
+            imageBodyPart.setHeader("Content-ID", "image");//En el html <img src="cid:image">
+            mimeMultipart.addBodyPart(imageBodyPart);
+
+            message.setContent(mimeMultipart);
+
+            this.javaMailSender.send(message);
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+            throw new RuntimeException("Error SimpleMail: " + e.getMessage());
+        }
+    }
+}
+````
+
+**(1)** hacemos uso de la clase **MimeMultipart** que es una implementación de la clase abstracta **MultiPart** que usa
+convenciones MIME para los datos de varias partes. En el contexto del uso de la clase MimeMultipart con el subtipo "
+related", se refiere a un tipo especial de contenido multipart MIME que **se utiliza para agrupar múltiples partes
+relacionadas, como un mensaje de correo electrónico que incluye imágenes o recursos embebidos.**
+
+Cuando se envía un mensaje de correo electrónico que contiene imágenes o recursos embebidos en el cuerpo del mensaje, es
+necesario asegurarse de que estos recursos estén relacionados correctamente con el contenido principal del mensaje. Aquí
+es donde el subtipo "related" es útil.
+
+Por ejemplo, si deseas enviar un correo electrónico que contenga un mensaje de texto y una imagen embebida en el
+contenido, **usarías el subtipo "related" para agrupar ambas partes.** De esta manera, el cliente de correo electrónico
+receptor sabrá que la imagen está destinada a ser parte del contenido del mensaje y podrá mostrarla correctamente.
+
+Listo, ahora solo falta cambiar en el **UserServiceImple** el método que incrustará la imagen en el html:
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class UserServiceImpl implements IUserService {
+    /* other code */
+    @Override
+    @Transactional
+    public User saveUser(User user) {
+        /* other code */
+        this.emailService.sendHtmlEmailWithEmbeddedFiles(user.getName(), user.getEmail(), confirmation.getToken());
+
+        return user;
+    }
+}
+````
+
+Finalmente, ejecutamos la aplicación y observamos que el correo recibido ya contiene nuestra imagen incrustada en el
+html:
+
+![imagen-embebido-1.0.png](./assets/imagen-embebido-1.0.png)
+
